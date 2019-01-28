@@ -19,6 +19,6 @@ Versions, OS information, other:
 #### Completion criteria
 
 This is done when:
-- [] (replace this text)
+- [ ] (replace this text)
 - [ ] documentation updated
 - [ ] tests written
