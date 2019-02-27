@@ -1,6 +1,6 @@
 {
   "@context": "http://clowder.ncsa.illinois.edu/contexts/extractors.jsonld",
-  "name": "terra.opendronemap.fieldmosaic",
+  "name": "terra.drone-pipeline.opendronemap",
   "version": "1.0",
   "description": "OpenDroneMap Field Mosaic Stitcher",
   "author": "Chris Schnaufer <schnaufer@email.arizona.edu",

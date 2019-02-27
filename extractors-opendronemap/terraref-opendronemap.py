@@ -25,14 +25,14 @@ from opendrone_stitch import OpenDroneMapStitch
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
 # without many code changes
 if 'ua-mac' in STATIONS:
-    if not 'laz' in STATIONS['ua_mac']:
-        STATIONS['ua_mac']['laz'] = {'display': 'Compressed point cloud',
+    if not 'laz' in STATIONS['ua-mac']:
+        STATIONS['ua-mac']['laz'] = {'display': 'Compressed point cloud',
                                      'template': '{base}/{station}/Level_2/' + \
                                                  '{sensor}/{date}/{timestamp}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.laz'
                                     }
-    if not 'shp' in STATIONS['ua_mac']:
-        STATIONS['ua_mac']['shp'] = {'display': 'Shapefile',
+    if not 'shp' in STATIONS['ua-mac']:
+        STATIONS['ua-mac']['shp'] = {'display': 'Shapefile',
                                      'template': '{base}/{station}/Level_2/' + \
                                                  '{sensor}/{date}/{timestamp}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.shp'
@@ -69,13 +69,10 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
     """
 
     # Initialization of instance
-    def __init__(self, odm_args):
+    def __init__(self):
         """Initialization of instance
-
-        Args:
-            odm_args(obj): OpenDroneMap configuration settings
         """
-        super(ODMFullFieldStitcher, self).__init__(odm_args)
+        super(ODMFullFieldStitcher, self).__init__()
 
         # Array of files to upload once processing is done
         self.files_to_upload = None
@@ -104,11 +101,12 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
     # Called by OpenDroneMapStitch during the __init__ call
     # So we override it to make sure things happen the way we want them to
     # pylint: disable=arguments-differ
-    def setup(self):
+    def dosetup(self, odm_args):
         """Performs setup of our instances by defaulting our sensor
         """
         # parse command line and load default logging configuration
-        super(ODMFullFieldStitcher, self).setup(sensor='rgb_fullfield')
+        TerrarefExtractor.setup(self, sensor='rgb_fullfield')
+        OpenDroneMapStitch.dosetup(self, odm_args)
 
     # Called to see if we want the message
     # Hand it through to the OpenDroneMapStitch since it knows what it wants
@@ -421,5 +419,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 if __name__ == "__main__":
     args = config.config()
     args.project_path = tempfile.mkdtemp()
-    extractor = ODMFullFieldStitcher(args)
+
+    extractor = ODMFullFieldStitcher()
+    extractor.dosetup(args)
     extractor.start()
