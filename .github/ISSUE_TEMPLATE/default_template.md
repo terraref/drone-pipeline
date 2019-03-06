@@ -1,3 +1,12 @@
+---
+labels: issue
+about: 'Report issues such as features not working, changing the way something works, or enhancing a current feature.'
+name: 'Issue Report'
+title: 'Issue report'
+assignees: ''
+
+---
+
 <!-- Fill out this issue by completing the items below. Not every item may be relevent to you, so feel free to make changes-->
 
 #### The current behavior or issue
