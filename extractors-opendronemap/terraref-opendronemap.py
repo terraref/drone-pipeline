@@ -13,9 +13,9 @@ import logging
 import re
 
 from pyclowder.files import upload_metadata
-from terrautils.extractors import TerrarefExtractor, build_metadata, build_dataset_hierarchy, \
-    upload_to_dataset, file_exists
-from terrautils.sensors import STATIONS
+from terrautils.extractors import TerrarefExtractor, build_metadata, \
+     build_dataset_hierarchy_crawl, upload_to_dataset, file_exists
+from terrautils.sensors import Sensors, STATIONS
 
 from opendm import config
 
@@ -25,13 +25,13 @@ from opendrone_stitch import OpenDroneMapStitch
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
 # without many code changes
 if 'ua-mac' in STATIONS:
-    if not 'laz' in STATIONS['ua-mac']:
+    if 'laz' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['laz'] = {'display': 'Compressed point cloud',
                                      'template': '{base}/{station}/Level_2/' + \
                                                  '{sensor}/{date}/{timestamp}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.laz'
                                     }
-    if not 'shp' in STATIONS['ua-mac']:
+    if 'shp' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['shp'] = {'display': 'Shapefile',
                                      'template': '{base}/{station}/Level_2/' + \
                                                  '{sensor}/{date}/{timestamp}/{filename}',
@@ -96,7 +96,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         # Filename/extension mappings for derived types that are not included in the
         # default RGB sensor mapping
         return {'.laz':'laz', '.shp':'shp', '.dbf':'shp', '.shx':'shp',
-                'proj.txt':'shp', '.prj':'shp', '.json':'shp', ',geojson':'shp'}
+                'proj.txt':'shp', '.prj':'shp', '.json':'shp', '.geojson':'shp'}
 
     # Called by OpenDroneMapStitch during the __init__ call
     # So we override it to make sure things happen the way we want them to
@@ -182,7 +182,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
     # Performs the actual upload to the dataset
     # pylint: disable=too-many-locals
-    def perform_uploads(self, connector, host, secret_key, default_dsid, content, timestamp, dataset_name):
+    def perform_uploads(self, connector, host, secret_key, default_dsid, content, season_name, experiment_name, timestamp):
         """Perform the uploading of all the files we're put onto the upload list
 
         Args:
@@ -191,8 +191,9 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             secret_key(str): used with the host API
             default_dsid(str): the default dataset to load files to
             content(str): content information for the files we're uploading
+            season_name(str): the name of the season
+            experiment_name(str): the name of the experiment
             timestamp(str): the timestamp string associated with the source dataset
-            dataset_name(str): the speified output_dataset from the original request
 
         Notes:
             We loop through the files, compressing, and remapping the names as needed.
@@ -225,9 +226,13 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                     if s in self.sensor_dsid_map:
                         cur_dataset_id = self.sensor_dsid_map[s]
                     else:
-                        new_dsid = build_dataset_hierarchy(host, secret_key, self.clowder_user, self.clowder_pass, self.clowderspace,
-                                                           self.sensors.get_display_name(s), timestamp[:4],
-                                                           timestamp[5:7], leaf_ds_name=dataset_name)
+                        new_sensor = Sensors(base=self.sensors.base, station=self.sensors.station, sensor=s)
+
+                        new_dsid = build_dataset_hierarchy_crawl(host, secret_key, self.clowder_user, self.clowder_pass, self.clowderspace,
+                                                                 season_name, experiment_name, new_sensor.get_display_name(),
+                                                                 timestamp[:4], timestamp[5:7], timestamp[8:10],
+                                                                 leaf_ds_name=new_sensor.get_display_name() + ' - ' + timestamp)
+
                         self.sensor_dsid_map[s] = new_dsid
                         cur_dataset_id = new_dsid
 
@@ -246,6 +251,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                 raise Exception("%s was not found" % sourcefile)
 
     # Extract the timestamp
+    # pylint: disable=too-many-nested-blocks
     def get_timestamp(self, dataset_name, resource):
         """Extracts the timestamp from the dataset name
 
@@ -270,10 +276,10 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                         date = r.group(0)
                         if not '-' in date[:4]:
                             return date
-                    else:
-                        split_date = date.split("-")
-                        if len(split_date) == 3:
-                            return date[2] + "-" + date[1] + "-" + date[0]
+                        else:
+                            split_date = date.split("-")
+                            if len(split_date) == 3:
+                                return date[2] + "-" + date[1] + "-" + date[0]
 
         self.log_error(resource, "A date is not recognised as part of the name of the dataset")
         raise RuntimeError("Invalid dataset name. Needs to include a date such as 'My dataset - YYYY-MM-DD - more text'")
@@ -298,10 +304,10 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         # Handle any parameters
         if isinstance(parameters, basestring):
             parameters = json.loads(parameters)
-        if 'parameters' in parameters:
-            parameters = parameters['parameters']
         if isinstance(parameters, unicode):
             parameters = json.loads(str(parameters))
+        #if 'parameters' in parameters:
+        #    parameters = parameters['parameters']
 
         # Array of files to upload once processing is done
         self.files_to_upload = []
@@ -313,9 +319,10 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         # that may not be available for upload; we handle those as we see them in upload_file() above
         sensor_type = "rgb"
 
-        # dataset_name = "Full Field - 2017-01-01"
-        dataset_name = parameters["output_dataset"]
+        # Initialize local variables
+        dataset_name = parameters["datasetname"]
         scan_name = parameters["scan_type"] if "scan_type" in parameters else ""
+        season_name, experiment_name = "Unknown Season", "Unknown Experiment"
 
         # Look over file metadata to get the best timestamp
         timestamp = self.get_timestamp(dataset_name, resource)
@@ -372,9 +379,10 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             subprocess.call(cmd, shell=True)
 
         # Get dataset ID or create it, creating parent collections as needed
-        target_dsid = build_dataset_hierarchy(host, secret_key, self.clowder_user, self.clowder_pass, self.clowderspace,
-                                              self.sensors.get_display_name(), timestamp[:4],
-                                              timestamp[5:7], leaf_ds_name=dataset_name)
+        target_dsid = build_dataset_hierarchy_crawl(host, secret_key, self.clowder_user, self.clowder_pass, self.clowderspace,
+                                                    season_name, experiment_name, self.sensors.get_display_name(),
+                                                    timestamp[:4], timestamp[5:7], timestamp[8:10],
+                                                    leaf_ds_name=self.sensors.get_display_name() + ' - ' + timestamp)
 
         # Store our dataset mappings for possible later use
         self.sensor_dsid_map = {sensor_type : target_dsid}
@@ -407,12 +415,12 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                          "dest_name":file_name, "compress":False})
 
         # This function uploads the files into their appropriate datasets
-        self.perform_uploads(connector, host, secret_key, target_dsid, content, timestamp, dataset_name)
+        self.perform_uploads(connector, host, secret_key, target_dsid, content, season_name, experiment_name, timestamp)
 
         # Cleanup the all destination folders
         check_delete_folder(self.cache_folder)
         for sp in self.sensor_maps:
-            check_delete_folder(sp["dir"])
+            check_delete_folder(self.sensor_maps[sp]["dir"])
 
         self.end_message(resource)
 

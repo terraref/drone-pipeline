@@ -11,17 +11,11 @@ RUN useradd -u 49044 extractor \
 RUN curl --get https://raw.githubusercontent.com/GitHubRGI/geopackage-python/master/Tiling/gdal2tiles_parallel.py > gdal2tiles_parallel.py  && \
     mv gdal2tiles_parallel.py /home/extractor/gdal2tiles_parallel.py
 
-RUN add-apt-repository ppa:ubuntugis/ubuntugis-unstable && \
-    apt-get -q -y update && \
-    apt-get -q -y upgrade && \
-    apt-get install -y gdal-bin libsm6 && \
-    rm -rf /var/lib/apt/lists/*
-
 RUN pip install --upgrade pip && \
     pip install -U numpy && \
     pip install --ignore-installed enum34 terrautils
 
-# command to run when starting docker
+# Copy our source files
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
 
 USER extractor
@@ -34,6 +28,6 @@ CMD ["extractor"]
 # executed by entrypoint.sh
 ENV RABBITMQ_EXCHANGE="terra" \
     RABBITMQ_VHOST="%2F" \
-    RABBITMQ_QUEUE="terra.opendronemap.fieldmosaic" \
+    RABBITMQ_QUEUE="terra.dronepipeline.opendronemap" \
     MAIN_SCRIPT="terraref-opendronemap.py" \
     PYTHONPATH="${PYTHONPATH}:/code"
