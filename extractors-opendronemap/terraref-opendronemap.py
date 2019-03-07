@@ -14,7 +14,8 @@ import re
 
 from pyclowder.files import upload_metadata
 from terrautils.extractors import TerrarefExtractor, build_metadata, \
-     build_dataset_hierarchy_crawl, upload_to_dataset, file_exists
+     build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
+     check_file_in_dataset
 from terrautils.sensors import Sensors, STATIONS
 
 from opendm import config
@@ -149,10 +150,6 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         cache_path = os.path.join(self.cache_folder, source_file_name)
         os.rename(src_path, cache_path)
 
-        # Ignore files we're specifcaly uploading later
-        if self.args.orthophotoname == source_file_name:
-            return
-
         # Handle extensions/sensors
         new_sensor = None
         for m in self.filename_sensor_maps:
@@ -182,7 +179,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
     # Performs the actual upload to the dataset
     # pylint: disable=too-many-locals
-    def perform_uploads(self, connector, host, secret_key, default_dsid, content, season_name, experiment_name, timestamp):
+    def perform_uploads(self, connector, host, secret_key, resource, default_dsid, content, season_name, experiment_name, timestamp):
         """Perform the uploading of all the files we're put onto the upload list
 
         Args:
@@ -235,6 +232,19 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
                         self.sensor_dsid_map[s] = new_dsid
                         cur_dataset_id = new_dsid
+
+                # Check if file already exists in the dataset
+                file_in_dataset = check_file_in_dataset(connector, host, secret_key, cur_dataset_id, resultfile, remove=False)
+
+                # If the files is already in the dataset, determine if we need to delete it first
+                if self.overwrite and file_in_dataset:
+                    # Delete the file from the dataset before uploading the new copy
+                    self.log_info(resource, "Removing existing file in dataset " + resultfile)
+                    check_file_in_dataset(connector, host, secret_key, cur_dataset_id, resultfile, remove=True)
+                elif not self.overwrite and file_in_dataset:
+                    # We won't overwrite an existing file
+                    self.log_skip(resource, "Not overwriting existing file in dataset " + resultfile)
+                    continue
 
                 # Upload the file to the dataset
                 dsid = upload_to_dataset(connector, host, self.clowder_user, self.clowder_pass, cur_dataset_id, resultfile)
@@ -366,16 +376,39 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         # If we need the whole set of files, create them
         if not only_png:
             # Override the output file name. We don't save anything here because we'll override it the next time through
-            self.args.orthophotoname = os.path.basename(out_tif_full)
+            self.args.orthophotoname = os.path.splitext(os.path.basename(out_tif_full))[0]
 
             # Run the stitch process
             OpenDroneMapStitch.process_message(self, connector, host, secret_key, resource, parameters)
 
+            # Look up the name of the full sized orthomosaic
+            basename = os.path.basename(out_tif_full)
+            srcname = None
+            for f in self.files_to_upload:
+                if f["dest_name"] == basename:
+                    srcname = os.path.join(self.cache_folder, f["source_name"])
+                    break
+
+            # Generate other file sizes from the original orthomosaic
+            if srcname and not file_exists(out_tif_medium):
+                self.log_info(resource, "Converting orthomosaic to %s..." % out_tif_medium)
+                outname = os.path.join(self.cache_folder, os.path.basename(out_tif_medium))
+                cmd = "gdal_translate -outsize %s%% %s%% %s %s" % (10, 10, srcname, outname)
+                subprocess.call(cmd, shell=True)
+
+            if srcname and not file_exists(out_tif_thumb):
+                self.log_info(resource, "Converting orthomosaic to %s..." % out_tif_thumb)
+                outname = os.path.join(self.cache_folder, os.path.basename(out_tif_thumb))
+                cmd = "gdal_translate -outsize %s%% %s%% %s %s" % (2, 2, srcname, outname)
+                subprocess.call(cmd, shell=True)
+
         # We're here only due to needing the PNG Thumbnail
-        if only_png:
+        if (only_png or not png_exists) and file_exists(out_tif_medium):
             # Create PNG thumbnail
             self.log_info(resource, "Converting 10pct to %s..." % out_png)
-            cmd = "gdal_translate -of PNG %s %s" % (out_tif_medium, out_png)
+            srcname = os.path.join(self.cache_folder, os.path.basename(out_tif_medium))
+            outname = os.path.join(self.cache_folder, os.path.basename(out_png))
+            cmd = "gdal_translate -of PNG %s %s" % (srcname, outname)
             subprocess.call(cmd, shell=True)
 
         # Get dataset ID or create it, creating parent collections as needed
@@ -394,28 +427,33 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         }
 
         # If we newly created these files, upload to Clowder
-        if file_exists(out_tif_thumb) and not thumb_exists:
-            file_name = os.path.basenamne(out_tif_thumb)
+        file_name = os.path.basename(out_tif_thumb)
+        file_path = os.path.join(self.cache_folder, file_name)
+        if file_exists(file_path) and not thumb_exists:
             self.files_to_upload.append({"source_path":self.cache_folder, "source_name":file_name, "dest_path":out_dir,
                                          "dest_name":file_name, "compress":False})
 
-        if file_exists(out_tif_medium) and not med_exists:
-            file_name = os.path.basenamne(out_tif_medium)
+        file_name = os.path.basename(out_tif_medium)
+        file_path = os.path.join(self.cache_folder, file_name)
+        if file_exists(file_path) and not med_exists:
             self.files_to_upload.append({"source_path":self.cache_folder, "source_name":file_name, "dest_path":out_dir,
                                          "dest_name":file_name, "compress":False})
 
-        if file_exists(out_png) and not png_exists:
-            file_name = os.path.basenamne(out_png)
+        file_name = os.path.basename(out_png)
+        file_path = os.path.join(self.cache_folder, file_name)
+        if file_exists(file_path) and not png_exists:
             self.files_to_upload.append({"source_path":self.cache_folder, "source_name":file_name, "dest_path":out_dir,
                                          "dest_name":file_name, "compress":False})
 
-        if file_exists(out_tif_full) and not full_exists:
-            file_name = os.path.basenamne(out_tif_full)
-            self.files_to_upload.append({"source_path":self.cache_folder, "source_name":file_name, "dest_path":out_dir,
-                                         "dest_name":file_name, "compress":False})
+        # The main orthomosaic is already getting uploaded
+        #file_name = os.path.basename(out_tif_full)
+        #file_path = os.path.join(self.cache_folder, file_name)
+        #if file_exists(file_path) and not full_exists:
+        #    self.files_to_upload.append({"source_path":self.cache_folder, "source_name":file_name, "dest_path":out_dir,
+        #                                 "dest_name":file_name, "compress":False})
 
         # This function uploads the files into their appropriate datasets
-        self.perform_uploads(connector, host, secret_key, target_dsid, content, season_name, experiment_name, timestamp)
+        self.perform_uploads(connector, host, secret_key, resource, target_dsid, content, season_name, experiment_name, timestamp)
 
         # Cleanup the all destination folders
         check_delete_folder(self.cache_folder)
