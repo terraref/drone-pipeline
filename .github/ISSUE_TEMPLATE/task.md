@@ -16,7 +16,8 @@ Motivation for doing this task
 **Result**
 What's the result of doing this task
 
-<!-- Optional -->
+<!--- Optional -->
+
 **Steps to take**
 - [ ] None
 - [ ] Step 1
