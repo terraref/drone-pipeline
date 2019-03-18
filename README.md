@@ -35,12 +35,11 @@ For example, a custom pipeline job submission API may not be available immediate
 
 ## User Stories
 
-User stories are used to define the goals and needs of drone pipeline users.
-<TODO: Provide URL to user stories>
+[User stories][https://github.com/terraref/drone-pipeline/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22user+story%22] are used to define the goals and needs of drone pipeline users.
 
 ## Contributing
 
-Please read [CONTRIBUTING.md][] for details on our Code Of Conduct, the process of submitting pull requests, and other details.
+Please read [CONTRIBUTING.md][https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTING.md] for details on our Code Of Conduct, the process of submitting pull requests, and other details.
 
 ## Versioning 
 
