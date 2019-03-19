@@ -53,4 +53,4 @@ Note that a tag may contain older code for what you are interested in since only
 
 ## Acknowledgments
 
-The [CONTRIBUTORS.md][] file contains the list of contributors that wish to be acknowledged.
+The [CONTRIBUTORS.md][https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTORS.md] file contains the list of contributors that wish to be acknowledged.
