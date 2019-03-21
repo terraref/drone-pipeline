@@ -3,13 +3,16 @@ FROM chrisatua/extractors:opendronemap
 
 MAINTAINER Chris Schnaufer <chris.schnaufer@email.arizona.edu>
 
-# Install any users and programs needed
+# Install any users
 RUN useradd -u 49044 extractor \
     && mkdir /home/extractor \
-    && chown -R extractor /home/extractor
+    && mkdir /home/extractor/sites
 
-RUN curl --get https://raw.githubusercontent.com/GitHubRGI/geopackage-python/master/Tiling/gdal2tiles_parallel.py > gdal2tiles_parallel.py  && \
-    mv gdal2tiles_parallel.py /home/extractor/gdal2tiles_parallel.py
+RUN chown -R extractor /home/extractor \
+    && chgrp -R extractor /home/extractor 
+
+#RUN curl --get https://raw.githubusercontent.com/GitHubRGI/geopackage-python/master/Tiling/gdal2tiles_parallel.py > gdal2tiles_parallel.py  && \
+#    mv gdal2tiles_parallel.py /home/extractor/gdal2tiles_parallel.py
 
 RUN pip install --upgrade pip && \
     pip install -U numpy && \

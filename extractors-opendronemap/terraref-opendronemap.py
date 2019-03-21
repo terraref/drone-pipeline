@@ -29,13 +29,13 @@ if 'ua-mac' in STATIONS:
     if 'laz' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['laz'] = {'display': 'Compressed point cloud',
                                      'template': '{base}/{station}/Level_2/' + \
-                                                 '{sensor}/{date}/{timestamp}/{filename}',
+                                                 '{sensor}/{date}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.laz'
                                     }
     if 'shp' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['shp'] = {'display': 'Shapefile',
                                      'template': '{base}/{station}/Level_2/' + \
-                                                 '{sensor}/{date}/{timestamp}/{filename}',
+                                                 '{sensor}/{date}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.shp'
                                     }
 
@@ -198,39 +198,39 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             the default dataset. Otherwise, we use the dataset associated with the sensor
             and create the dataset if necessary
         """
-        for f in self.files_to_upload:
-            sourcefile = os.path.join(f["source_path"], f["source_name"])
+        for one_file in self.files_to_upload:
+            sourcefile = os.path.join(one_file["source_path"], one_file["source_name"])
 
             # Make sure we have the original file and then compress it if needed, or remane is
             if os.path.isfile(sourcefile):
                 # make sure we have the full destination path
-                if not os.path.exists(f["dest_path"]):
-                    os.makedirs(f["dest_path"])
+                if not os.path.exists(one_file["dest_path"]):
+                    os.makedirs(one_file["dest_path"])
 
-                resultfile = os.path.join(f["dest_path"], f["dest_name"])
-                if f["compress"]:
+                resultfile = os.path.join(one_file["dest_path"], one_file["dest_name"])
+                if one_file["compress"]:
                     resultfile = resultfile + ".zip"
                     with open(sourcefile, 'rb') as f_in:
                         with gzip.open(resultfile, 'wb') as f_out:
                             shutil.copyfileobj(f_in, f_out)
                 elif not sourcefile == resultfile:
-                    os.rename(sourcefile, resultfile)
+                    shutil.move(sourcefile, resultfile)
 
                 # Find or create the target dataset for this entry if it doesn't exist
                 cur_dataset_id = default_dsid
-                if "sensor" in f:
-                    s = f["sensor"]
-                    if s in self.sensor_dsid_map:
-                        cur_dataset_id = self.sensor_dsid_map[s]
+                if "sensor" in one_file:
+                    sensor_type = one_file["sensor"]
+                    if sensor_type in self.sensor_dsid_map:
+                        cur_dataset_id = self.sensor_dsid_map[sensor_type]
                     else:
-                        new_sensor = Sensors(base=self.sensors.base, station=self.sensors.station, sensor=s)
+                        new_sensor = Sensors(base=self.sensors.base, station=self.sensors.station, sensor=sensor_type)
 
                         new_dsid = build_dataset_hierarchy_crawl(host, secret_key, self.clowder_user, self.clowder_pass, self.clowderspace,
                                                                  season_name, experiment_name, new_sensor.get_display_name(),
                                                                  timestamp[:4], timestamp[5:7], timestamp[8:10],
                                                                  leaf_ds_name=new_sensor.get_display_name() + ' - ' + timestamp)
 
-                        self.sensor_dsid_map[s] = new_dsid
+                        self.sensor_dsid_map[sensor_type] = new_dsid
                         cur_dataset_id = new_dsid
 
                 # Check if file already exists in the dataset
@@ -338,7 +338,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         timestamp = self.get_timestamp(dataset_name, resource)
 
         # Generate the file names
-        out_tif_full = self.sensors.create_sensor_path(timestamp, opts=[sensor_type, scan_name]).replace(" ", "_")
+        out_tif_full = self.sensors.get_sensor_path(timestamp, opts=[sensor_type, scan_name]).replace(" ", "_")
         out_tif_thumb = out_tif_full.replace(".tif", "_thumb.tif")
         out_tif_medium = out_tif_full.replace(".tif", "_10pct.tif")
         out_png = out_tif_medium.replace(".tif", ".png")
@@ -347,11 +347,11 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         # Generate dictionary of sensor output folders and file names
         sensor_maps = {sensor_type: {"dir" : out_dir, "name" : os.path.basename(out_tif_full)}}
         fsm = self.filename_sensor_maps
-        for m in fsm:
-            s = fsm[m]
-            if not s in sensor_maps:
-                sensor_path = self.sensors.create_sensor_path(timestamp, opts=[s, scan_name]).replace(" ", "_")
-                sensor_maps[s] = {"dir" : os.path.dirname(sensor_path), "name" : os.path.basename(sensor_path)}
+        for one_map in fsm:
+            cur_sensor = fsm[one_map]
+            if not cur_sensor in sensor_maps:
+                sensor_path = self.sensors.get_sensor_path(timestamp, sensor=cur_sensor, opts=[cur_sensor, scan_name]).replace(" ", "_")
+                sensor_maps[cur_sensor] = {"dir" : os.path.dirname(sensor_path), "name" : os.path.basename(sensor_path)}
         self.sensor_maps = sensor_maps
 
         # Only generate what we need to by checking files on disk
@@ -402,11 +402,11 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                 cmd = "gdal_translate -outsize %s%% %s%% %s %s" % (2, 2, srcname, outname)
                 subprocess.call(cmd, shell=True)
 
-        # We're here only due to needing the PNG Thumbnail
-        if (only_png or not png_exists) and file_exists(out_tif_medium):
+        # We're here due to possibly needing the PNG Thumbnail
+        srcname = os.path.join(self.cache_folder, os.path.basename(out_tif_medium))
+        if (only_png or not png_exists) and file_exists(srcname):
             # Create PNG thumbnail
             self.log_info(resource, "Converting 10pct to %s..." % out_png)
-            srcname = os.path.join(self.cache_folder, os.path.basename(out_tif_medium))
             outname = os.path.join(self.cache_folder, os.path.basename(out_png))
             cmd = "gdal_translate -of PNG %s %s" % (srcname, outname)
             subprocess.call(cmd, shell=True)
@@ -421,9 +421,13 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         self.sensor_dsid_map = {sensor_type : target_dsid}
 
         # Upload full field image to Clowder
+        file_ids = []
+        if "files" in resource:
+            for one_file in resource["files"]:
+                file_ids.append(one_file.get("id", ""))
         content = {
             "comment": "This stitched file is computed using OpenDroneMap. Change the parameters in extractors-opendronemap.txt to change the results.",
-            "file_ids": parameters.get("file_paths", "")
+            "file_ids": ", ".join(file_ids)
         }
 
         # If we newly created these files, upload to Clowder
@@ -445,21 +449,26 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             self.files_to_upload.append({"source_path":self.cache_folder, "source_name":file_name, "dest_path":out_dir,
                                          "dest_name":file_name, "compress":False})
 
-        # The main orthomosaic is already getting uploaded
-        #file_name = os.path.basename(out_tif_full)
-        #file_path = os.path.join(self.cache_folder, file_name)
-        #if file_exists(file_path) and not full_exists:
-        #    self.files_to_upload.append({"source_path":self.cache_folder, "source_name":file_name, "dest_path":out_dir,
-        #                                 "dest_name":file_name, "compress":False})
+        # The main orthomosaic is already getting uploaded, but we must make sure its path is correct
+        srcname = os.path.basename(out_tif_full).lower()
+        for one_file in self.files_to_upload:
+            file_name = os.path.basename(one_file["dest_name"]).lower()
+            if file_name == srcname:
+                one_file["dest_path"] = os.path.dirname(out_tif_full)
+                break
 
         # This function uploads the files into their appropriate datasets
         self.perform_uploads(connector, host, secret_key, resource, target_dsid, content, season_name, experiment_name, timestamp)
 
-        # Cleanup the all destination folders
-        check_delete_folder(self.cache_folder)
+        # Cleanup the all destination folders skipping over ones that are in our "base" path (we want to keep those)
+        base = self.sensors.base
+        if not self.cache_folder.startswith(base):
+            check_delete_folder(self.cache_folder)
         for sp in self.sensor_maps:
-            check_delete_folder(self.sensor_maps[sp]["dir"])
+            if not self.sensor_maps[sp]["dir"].startswith(base):
+                check_delete_folder(self.sensor_maps[sp]["dir"])
 
+        # We are done
         self.end_message(resource)
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ Generalizing the TERRA REF pipelines for processing data from UAV's
 ## Overview
 
 This project is leveraging the work done in the TERRA REF project to create a drone-specfic processing pipeline for plant based analysis.
-It assumes you are familiar with [Clowder's][https://opensource.ncsa.illinois.edu/bitbucket/projects/CATS] concepts of extractors.
+It assumes you are familiar with [Clowder's](https://opensource.ncsa.illinois.edu/bitbucket/projects/CATS) concepts of extractors.
 
 ### Challenges
 
@@ -35,15 +35,15 @@ For example, a custom pipeline job submission API may not be available immediate
 
 ## User Stories
 
-[User stories][https://github.com/terraref/drone-pipeline/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22user+story%22] are used to define the goals and needs of drone pipeline users.
+[User stories](https://github.com/terraref/drone-pipeline/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22user+story%22) are used to define the goals and needs of drone pipeline users.
 
 ## Contributing
 
-Please read [CONTRIBUTING.md][https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTING.md] for details on our Code Of Conduct, the process of submitting pull requests, and other details.
+Please read [CONTRIBUTING.md](https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTING.md) for details on our Code Of Conduct, the process of submitting pull requests, and other details.
 
 ## Versioning 
 
-We are following [Semantic Versioning][https://semver.org/] for version numbers. 
+We are following [Semantic Versioning](https://semver.org/) for version numbers. 
 Note that a tag may contain older code for what you are interested in since only changed extractors/sub-projects are built for any tag.
 
 ## Authors
@@ -53,4 +53,4 @@ Note that a tag may contain older code for what you are interested in since only
 
 ## Acknowledgments
 
-The [CONTRIBUTORS.md][https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTORS.md] file contains the list of contributors that wish to be acknowledged.
+The [CONTRIBUTORS.md](https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTORS.md) file contains the list of contributors that wish to be acknowledged.

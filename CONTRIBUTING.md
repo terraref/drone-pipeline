@@ -3,7 +3,7 @@
 We are very happy to have you contributing to our common effort!
 To contribute to the TERRA REF Drone Pipeline, please follow the workflow outlined below.
 
-We are also happy to receive [feedback][https://github.com/terraref/drone-pipeline/issues/new/choose] on our policies and how they may, or may not, apply to you. 
+We are also happy to receive [feedback](https://github.com/terraref/drone-pipeline/issues/new/choose) on our policies and how they may, or may not, apply to you. 
 Note that policies need to be followed regardless of how you may feel about them.
 
 When contributing to this repository, please first discuss the change you wish to make via issue,
@@ -11,7 +11,7 @@ email, or any other method with the owners of this repository before making a ch
 
 ## User Stories
 
-If you want to use the drone pipeline to solve a problem you have, but aren't able to spend the time necessary for making a complete solution, consider adding a [User Story][https://github.com/terraref/drone-pipeline/issues/new/choose].
+If you want to use the drone pipeline to solve a problem you have, but aren't able to spend the time necessary for making a complete solution, consider adding a [User Story](https://github.com/terraref/drone-pipeline/issues/new/choose).
 
 Adding a user story allows your needs to become known and commenting on it to begin.
 Once your user story is in the system it can be picked up and worked on by interested developers.
@@ -63,23 +63,23 @@ This may include providing source files, expected output, any acceptable variati
 
 ## Tags
 
-We are following [Semantic Versioning][https://semver.org/] for version numbers.
+We are following [Semantic Versioning](https://semver.org/) for version numbers.
 Every released version has a matching tag associated with it.
 
 ## Workflow
 
 1. Make sure you have a [GitHub account](https://github.com/signup/free)
-2. If you have a new feature or improvement, please discuss your ideas with the community on the [Slack][https://terra-ref.slack.com] channel.
-3. Submit a ticket in [GitHub][https://github.com/terraref/drone-pipeline/issues] for your issue, if one doesn't exist already
+2. If you have a new feature or improvement, please discuss your ideas with the community on the [Slack](https://terra-ref.slack.com) channel.
+3. Submit a ticket in [GitHub](https://github.com/terraref/drone-pipeline/issues) for your issue, if one doesn't exist already
   * If it's a bug, use the `Issue Report` issue template and clearly describe the issue as outlined
   * If it's a new feature or an improvement, use the `Feature Request` issue template and clearly describe all requirements and how your proposed solution would fulfill them. For complex
-  new features it might help to create a [wiki page][https://github.com/terraref/drone-pipeline/wiki]
-4. Create a fork on [GitHub][https://github.com/terraref/drone-pipeline]
+  new features it might help to create a [wiki page](https://github.com/terraref/drone-pipeline/wiki)
+4. Create a fork on [GitHub](https://github.com/terraref/drone-pipeline)
 5. Check out the `develop` branch
 6. Make a feature/issue/task branch using the naming convention described above
 7. Make your cool new feature or bugfix on your branch and update the documentation
 8. From your branch, make a pull request against `develop`, being sure to point out where to find documentation updates (clearly labeled URIs are fine), and providing testing materials
-9. Work with repo maintainers to get your change reviewed on [GitHub][https://github.com/terraref/drone-pipeline]
+9. Work with repo maintainers to get your change reviewed on [GitHub](https://github.com/terraref/drone-pipeline)
 10. After approval, your branch will be merged into the `develop` branch
 11. Your branch will be deleted soon after being merged. Post-¬merge issues or changes are addressed with new tickets.
 
