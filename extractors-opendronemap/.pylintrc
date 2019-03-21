@@ -1,2 +1,0 @@
-[Master]
-init-hook='import sys; sys.path.append("/Users/chris/clowder/extractors-opendronemap"); sys.path.append("/Users/chris/odm")'
