@@ -22,20 +22,20 @@ It's possible that someone has had similar needs and by reading how they reached
 ## Branches
 
 We are using a 'issue branch', 'develop', and 'master' form of branching (which you may already be familiar with).
-Each issue has it's own branch on which development is done.
+Each issue has its own branch on which development is done.
 When an issue is completed, its branch is merged into the development branch **with** history compression.
 To make a release, the develop branch is merged into the master branch by an authorized user.
 
 ### Issue Branch Naming
 
-The branch name must start with the type of development that is being done; this should be simmilar to the issue type.
+The branch name must start with the type of development that is being done; this should be similar to the issue type.
 For example, the branch for an `Issue Report` ticket would start with `issue`, and `Feature Request` would start with `feature`.
 
 Next, the issue number directly follows the starting name, separated by a hyphen.
 For example, `Task` #23 would have a starting branch name of `task-23`.
 
 Finally a slash `/` and a very brief description is appended.
-The description can contain alpha-numeric characters and hypens.
+The description can contain alpha-numeric characters and hyphens.
 Hyphens are used to separate words in this part of the name; underscores and other symbols are not allowed.
 
 For example, the branch for Issue Report #7, for removing any trailing underscores from files names, could be named `issue-7/remove-trailing-chars`.
@@ -47,9 +47,9 @@ When an issue branch is merged with the develop branch, it is deleted, resulting
 The goal is to reduce the amount of data to sort through to get to meaningful information.
 It's important to comment on all commits to assist reviewers.
 Many changes are small/short updates (or at least should be) and aren't important after reviewing and merging.
-If there's something important to be considered in the future, it should be documentated elsewhere.
+If there's something important to be considered in the future, it should be documented elsewhere.
 
-This policy may be ammended in the future.
+This policy may be amended in the future.
 
 ## Documentation
 
@@ -77,11 +77,11 @@ Every released version has a matching tag associated with it.
 4. Create a fork on [GitHub](https://github.com/terraref/drone-pipeline)
 5. Check out the `develop` branch
 6. Make a feature/issue/task branch using the naming convention described above
-7. Make your cool new feature or bugfix on your branch and update the documentation
+7. Make your cool new feature or bug fix on your branch and update the documentation
 8. From your branch, make a pull request against `develop`, being sure to point out where to find documentation updates (clearly labeled URIs are fine), and providing testing materials
 9. Work with repo maintainers to get your change reviewed on [GitHub](https://github.com/terraref/drone-pipeline)
 10. After approval, your branch will be merged into the `develop` branch
-11. Your branch will be deleted soon after being merged. Post-¬merge issues or changes are addressed with new tickets.
+11. Your branch will be deleted soon after being merged. Post-merge issues or changes are addressed with new tickets.
 
 ## Code Reviews
 

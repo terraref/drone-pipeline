@@ -4,7 +4,7 @@ Generalizing the TERRA REF pipelines for processing data from UAV's
 
 ## Overview
 
-This project is leveraging the work done in the TERRA REF project to create a drone-specfic processing pipeline for plant based analysis.
+This project is leveraging the work done in the TERRA REF project to create a drone-specific processing pipeline for plant based analysis.
 It assumes you are familiar with [Clowder's](https://opensource.ncsa.illinois.edu/bitbucket/projects/CATS) concepts of extractors.
 
 ### Challenges
@@ -13,14 +13,14 @@ There are several challenges to adapting the pipeline to work with drone data.
 Among these challenges are:
 * unique workflows
 * emerging standards
-* leveraging third party softwere
+* leveraging third party software
 * different data storage layouts and access mechanisms
 * widely differing processing environments (single laptops to HPCs)
-* changing technologial landscape (new programming languages, new algorithms, and machine learning to name some)
+* changing technological landscape (new programming languages, new algorithms, and machine learning to name some)
 
 ### Goals
 
-By setting the appropriate development goals it's believed the above challenges can be addressed in a way that provides relevance into the future.
+By setting the appropriate development goals, it's believed the above challenges can be addressed in a way that provides relevance into the future.
 These goals are:
 * commonality - use, and allow the use of, standards wherever possible
 * customization - ability to conform the drone pipelines to an individual's or group's needs
