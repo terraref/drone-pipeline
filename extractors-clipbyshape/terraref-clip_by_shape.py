@@ -431,6 +431,7 @@ class ClipByShape(TerrarefExtractor):
             shape_rows = iter(list(shape_table))
             column_names = shape_table.field_names
             for one_name in column_names:
+                # observationUnitName
                 if (one_name.find('plot') >= 0) and (one_name.find('name') >= 0):
                     plot_name_idx = one_name
                     break
@@ -518,7 +519,6 @@ class ClipByShape(TerrarefExtractor):
 
                 self.created += 1
                 self.bytes += os.path.getsize(out_file)
-
 
             # Get the next shape to extract
             poly = layer.GetNextFeature()
