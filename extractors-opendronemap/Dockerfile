@@ -18,6 +18,9 @@ RUN pip install --upgrade pip && \
     pip install -U numpy && \
     pip install --ignore-installed enum34 terrautils
 
+# Copy and install our utilities
+RUN pip install pipelineutils 
+
 # Copy our source files
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
 

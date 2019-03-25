@@ -10,13 +10,13 @@ import json
 import gzip
 import shutil
 import logging
-import re
 
 from pyclowder.files import upload_metadata
-from terrautils.extractors import TerrarefExtractor, build_metadata, \
+from terrautils.extractors import build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
      check_file_in_dataset
 from terrautils.sensors import Sensors, STATIONS
+from pipelineutils.extractors import PipelineExtractor
 
 from opendm import config
 
@@ -58,7 +58,7 @@ def check_delete_folder(folder):
 
 # Class for performing a full field mosaic stitching using Clowder's opendronemap extractor
 # This class is mostly a wrapper around the OpenDroneMapStitch extractor
-class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
+class ODMFullFieldStitcher(PipelineExtractor, OpenDroneMapStitch):
     """Runs OpenDroneMap (ODM) extractor in the TerraRef environment
 
     The Clowder ODM extractor uploads the generated files into the source dataset.
@@ -81,15 +81,6 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         self.sensor_dsid_map = None
         self.cache_folder = None
 
-    # Property definitions
-    @property
-    def date_format_regex(self):
-        """Returns array of regex expressions for different date formats
-        """
-        # We lead with the best formatting to use, add on the catch-all
-        return [r'(\d{4}(/|-){1}\d{1,2}(/|-){1}\d{1,2})',
-                r'(\d{1,2}(/|-){1}\d{1,2}(/|-){1}\d{4})']
-
     @property
     def filename_sensor_maps(self):
         """Returns array of file name endings and thier associated sensor types
@@ -106,7 +97,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         """Performs setup of our instances by defaulting our sensor
         """
         # parse command line and load default logging configuration
-        TerrarefExtractor.setup(self, sensor='rgb_fullfield')
+        PipelineExtractor.setup(self, sensor='rgb_fullfield')
         OpenDroneMapStitch.dosetup(self, odm_args)
 
     # Called to see if we want the message
@@ -260,40 +251,6 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             else:
                 raise Exception("%s was not found" % sourcefile)
 
-    # Extract the timestamp
-    # pylint: disable=too-many-nested-blocks
-    def get_timestamp(self, dataset_name, resource):
-        """Extracts the timestamp from the dataset name
-
-        Returns:
-            The extracted timestamp as YYYY-MM-DD. Throws an exception if the timestamp isn't found
-
-        Notes:
-            This function only cares about if the timestamp looks correct. It doesn't
-            figure out if month and date are correct. The string is reformatted if
-            the year is in the wrong spot
-        """
-
-        formats = self.date_format_regex
-
-        # If there's a date in the dataset name it will be what we use
-        dataset_len = len(dataset_name)
-        if dataset_name and isinstance(dataset_name, basestring) and dataset_len > 0:
-            for part in dataset_name.split(" - "):
-                for f in formats:
-                    r = re.search(f, part)
-                    if r:
-                        date = r.group(0)
-                        if not '-' in date[:4]:
-                            return date
-                        else:
-                            split_date = date.split("-")
-                            if len(split_date) == 3:
-                                return date[2] + "-" + date[1] + "-" + date[0]
-
-        self.log_error(resource, "A date is not recognised as part of the name of the dataset")
-        raise RuntimeError("Invalid dataset name. Needs to include a date such as 'My dataset - YYYY-MM-DD - more text'")
-
     # We have a message to process
     # pylint: disable=too-many-branches
     # pylint: disable=too-many-statements
@@ -334,8 +291,8 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         scan_name = parameters["scan_type"] if "scan_type" in parameters else ""
         season_name, experiment_name = "Unknown Season", "Unknown Experiment"
 
-        # Look over file metadata to get the best timestamp
-        timestamp = self.get_timestamp(dataset_name, resource)
+        # Get the best timestamp
+        timestamp = self.get_datestamp(dataset_name)
 
         # Generate the file names
         out_tif_full = self.sensors.get_sensor_path(timestamp, opts=[sensor_type, scan_name]).replace(" ", "_")

@@ -1,2 +1,5 @@
 .pylintrc
+.egg-info
+build
+dist
 
