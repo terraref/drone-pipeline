@@ -21,6 +21,8 @@ from terrautils.extractors import TerrarefExtractor,  \
     build_metadata, build_dataset_hierarchy_crawl, file_exists, check_file_in_dataset
 from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
+from pipelineutils.extractors import PipelineExtractor
+
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
@@ -33,7 +35,7 @@ if 'ua-mac' in STATIONS:
                                             }
 
 # The class for clipping images by shape
-class ClipByShape(TerrarefExtractor):
+class ClipByShape(PipelineExtractor):
     """Extractor for clipping georeferenced images to plot boundaries via a shape file
 
        The extractor creates datasets of images for each plot and uploads them to Clowder
@@ -52,71 +54,17 @@ class ClipByShape(TerrarefExtractor):
         # Add any additional arguments to parser
         self.parser.add_argument('--identify-binary', nargs='?', dest='identify_binary',
                                  default=identify_binary,
-                                 help='Identify executable used to for file type capture ' +
+                                 help='Identify executable used to for image type capture ' +
                                  '(default=' + identify_binary + ')')
 
         # parse command line and load default logging configuration
         self.setup(sensor='clipbyshape')
-
-    # Property definitions
-    @property
-    def date_format_regex(self):
-        """Returns array of regex expressions for different date formats
-        """
-        # We lead with the best formatting to use, add on the catch-all
-        return [r'(\d{4}(/|-){1}\d{1,2}(/|-){1}\d{1,2})',
-                r'(\d{1,2}(/|-){1}\d{1,2}(/|-){1}\d{4})']
 
     @property
     def config_file_name(self):
         """Returns the name of the expected configuration file
         """
         return 'experiment.json'
-
-    # pylint: disable=too-many-nested-blocks
-    def get_timestamp(self, dataset_name, resource, default_to_today=True):
-        """Extracts the timestamp from the dataset name
-
-        Args:
-            dataset_name(str): string to search a timestamp for
-            resource(dict): dictionary containing the resources associated with the request
-            default_to_today(bool): True will return the current date if it's not found in the
-                                    name. False will have None returned if the date is not found
-                                    in the name. Parameter defaults to True
-
-        Returns:
-            The extracted timestamp as YYYY-MM-DD. Throws an exception if the timestamp isn't found
-
-        Notes:
-            This function only cares about if the timestamp looks correct. It doesn't
-            figure out if month and date are correct. The string is reformatted if
-            the year is in the wrong spot
-        """
-
-        formats = self.date_format_regex
-
-        # If there's a date in the dataset name it will be what we use
-        dataset_len = len(dataset_name)
-        if dataset_name and isinstance(dataset_name, basestring) and dataset_len > 0:
-            for part in dataset_name.split(" - "):
-                for one_format in formats:
-                    res = re.search(one_format, part)
-                    if res:
-                        date = res.group(0)
-                        if not '-' in date[:4]:
-                            return date
-                        else:
-                            split_date = date.split("-")
-                            if len(split_date) == 3:
-                                return date[2] + "-" + date[1] + "-" + date[0]
-
-        self.log_info(resource, "A date is not recognised as part of the name of the dataset")
-
-        if default_to_today is True:
-            self.log_info(resource, "    using the current date")
-            return datetime.datetime.today().strftime('%Y-%m-%d')
-
-        return None
 
     # Returns if the mime type of 'image' is found in the text passed in. A reasonable effort is
     # made to identify the section containing the type by looking for the phrase 'Mime', or 'mime',
@@ -340,10 +288,10 @@ class ClipByShape(TerrarefExtractor):
         if not ret_json is None:
             if 'season' in ret_json:
                 ret_season = ret_json['season']
-            if 'experiment' in ret_json:
-                ret_experiment = ret_json['experiment']
-            if 'date' in ret_json:
-                ret_timestamp = ret_json['date']
+            if 'studyName' in ret_json:
+                ret_experiment = ret_json['studyName']
+            if 'observationTimeStamp' in ret_json:
+                ret_timestamp = ret_json['observationTimeStamp']
 
         return (ret_season, ret_experiment, ret_timestamp, ret_json)
 
@@ -390,7 +338,7 @@ class ClipByShape(TerrarefExtractor):
         # Initialize local variables
         dataset_name = parameters["datasetname"]
         season_name, experiment_name = "Unknown Season", "Unknown Experiment"
-        timestamp = None
+        datestamp, shape_table, plot_name_idx, shape_rows = None, None, None, None
 
         # Array containing the links to uploaded files
         uploaded_file_ids = []
@@ -398,22 +346,39 @@ class ClipByShape(TerrarefExtractor):
         # Find the files we're interested in
         shapefile, dbffile, imagefiles = self.find_needed_files(resource['local_paths'],
                                                                 resource['triggering_file'])
+        if shapefile is None:
+            self.log_skip(resource, "No shapefile found")
+            return
+        num_image_files = len(imagefiles)
+        if num_image_files <= 0:
+            self.log_skip(resource, "No image files with geographic boundaries found")
+            return
 
         # Find pipeline JSON and essential fields
         # pylint: disable=line-too-long
-        season_name, experiment_name, timestamp, _ = self.find_pipeline_json(resource['local_paths'], season_name, experiment_name, None)
+        season_name, experiment_name, datestamp, config_json = self.find_pipeline_json(resource['local_paths'], season_name, experiment_name, None)
+        if 'extractors' in config_json:
+            extractor_json = config_json['extractors']
+            if 'plot_column_name' in extractor_json:
+                plot_name_idx = extractor_json['plot_column_name']
 
-        # If we don't have a date from the user yet, check the dataset name for one
-        if timestamp is None:
-            timestamp = self.get_timestamp(dataset_name, resource, default_to_today=True)
+        # If we don't have a valid date from the user yet, check the dataset name for one
+        if not datestamp is None:
+            try:
+                datestamp = self.get_datestamp(datestamp)
+            except Exception:
+                datestamp = None
+        if datestamp is None:
+            try:
+                datestamp = self.get_datestamp(dataset_name)
+            except Exception:
+                datestamp = None
+        # Still no datestamp, use today's date
+        if datestamp is None:
+            datestamp = datetime.datetime.today().strftime('%Y-%m-%d')
 
         # Check our current status
-        if not shapefile:
-            ValueError("Shapefile is missing from request")
-        num_image_files = len(imagefiles)
-        if num_image_files <= 0:
-            ValueError("Source image files are missing from request")
-        if not dbffile:
+        if dbffile is None:
             self.log_info(resource, "DBF file not found, using default plot naming")
         self.log_info(resource, "Extracting plots using shapefile '" + os.path.basename(shapefile) +
                       "'")
@@ -423,19 +388,23 @@ class ClipByShape(TerrarefExtractor):
         layer = shape_in.GetLayer(os.path.split(os.path.splitext(shapefile)[0])[1])
         poly = layer.GetNextFeature()
 
-        shape_table = None
-        plot_name_idx = None
-        shape_rows = None
         if dbffile:
             shape_table = DBF(dbffile, lowernames=True, ignore_missing_memofile=True)
             shape_rows = iter(list(shape_table))
-            column_names = shape_table.field_names
-            for one_name in column_names:
-                # observationUnitName
-                if (one_name.find('plot') >= 0) and (one_name.find('name') >= 0):
-                    plot_name_idx = one_name
-                    break
-            if not plot_name_idx:
+            if plot_name_idx is None:
+                column_names = shape_table.field_names
+                for one_name in column_names:
+                    if one_name.find("observationUnitName"):
+                        plot_name_idx = one_name
+                        break
+                    elif (one_name.find('plot') >= 0) and 
+                          ((one_name.find('name') >= 0) or one_name.find('id')):
+                        plot_name_idx = one_name
+                        break
+                    elif one_name == 'id':
+                        plot_name_idx = one_name
+                        break
+            if plot_name_idx is None:
                 ValueError(resource, "Shapefile data does not have a plot name field '" +
                            os.path.basename(dbffile) + "'")
 
@@ -460,18 +429,29 @@ class ClipByShape(TerrarefExtractor):
                 plot_name = "plot_" + str(alternate_plot_id)
 
             # Determine output dataset name
-            leaf_dataset = plot_display_name + ' - ' + plot_name + " - " + timestamp.split("__")[0]
+            leaf_dataset = plot_display_name + ' - ' + plot_name + " - " + datestamp.split("__")[0]
             self.log_info(resource, "Hierarchy: %s / %s / %s / %s / %s / %s / %s" %
                           (season_name, experiment_name, plot_display_name,
-                           timestamp[:4], timestamp[5:7], timestamp[8:10], leaf_dataset))
+                           datestamp[:4], datestamp[5:7], datestamp[8:10], leaf_dataset))
 
-            # Only create the dataset if we have data to put in it
-            target_dsid = None
+            # Create the dataset, even if we have no data to put in it, so that the caller knows
+            # it was addressed
+            target_dsid = build_dataset_hierarchy_crawl(host, secret_key,
+                                                        self.clowder_user,
+                                                        self.clowder_pass,
+                                                        self.clowderspace,
+                                                        season_name,
+                                                        experiment_name,
+                                                        plot_display_name,
+                                                        datestamp[:4],
+                                                        datestamp[5:7],
+                                                        datestamp[8:10],
+                                                        leaf_ds_name=leaf_dataset)
 
             # Loop through all the images looking for overlap
             for filename in imagefiles:
 
-                # Checking for overlap and skip if there is none
+                # Checking for geographic overlap and skip if there is none
                 bounds = imagefiles[filename]['bounds']
                 intersection = poly.Intersection(bounds)
                 if intersection.GetArea() <= 0:
@@ -479,37 +459,23 @@ class ClipByShape(TerrarefExtractor):
 
                 # Determine where we're putting the clipped file on disk and determine overwrite
                 # pylint: disable=unexpected-keyword-arg
-                out_file = self.sensors.create_sensor_path(timestamp, filename=filename,
+                out_file = self.sensors.create_sensor_path(datestamp, filename=filename,
                                                            plot=plot_name, subsensor=sensor_name)
                 if (file_exists(out_file) and not self.overwrite):
                     # The file exists and don't want to overwrite it
                     continue
 
-                self.log_info(resource, "Attempting to clip '" + filename + "' into polygon " +
-                              str(alternate_plot_id))
+                self.log_info(resource, "Attempting to clip '" + filename + "' to polygon number " +
+                                str(alternate_plot_id))
 
-                # Create destination dataset and folder on disk if we haven't done that already
-                if target_dsid is None:
-                    # pylint: disable=line-too-long
-                    target_dsid = build_dataset_hierarchy_crawl(host, secret_key,
-                                                                self.clowder_user,
-                                                                self.clowder_pass,
-                                                                self.clowderspace,
-                                                                season_name,
-                                                                experiment_name,
-                                                                plot_display_name,
-                                                                timestamp[:4],
-                                                                timestamp[5:7],
-                                                                timestamp[8:10],
-                                                                leaf_ds_name=leaf_dataset)
-
+                # Create destination folder on disk if we haven't done that already
                 if not os.path.exists(os.path.dirname(out_file)):
                     os.makedirs(os.path.dirname(out_file))
 
                 # Clip the raster
                 clip_raster(filename, imagefiles[filename]['bounding_tuples'], out_path=out_file)
 
-                # Upload the clipped image and its mask to the dataset
+                # Upload the clipped image to the dataset
                 found_in_dest = check_file_in_dataset(connector, host, secret_key, target_dsid,
                                                       out_file, remove=self.overwrite)
                 if not found_in_dest or self.overwrite:
