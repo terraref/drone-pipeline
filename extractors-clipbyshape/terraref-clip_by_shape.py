@@ -8,7 +8,6 @@ import json
 import logging
 import datetime
 import subprocess
-import re
 
 from osgeo import gdal, ogr
 from numpy import nan
@@ -17,8 +16,8 @@ from dbfread import DBF
 from pyclowder.utils import CheckMessage
 from pyclowder.files import upload_to_dataset
 from pyclowder.datasets import upload_metadata, remove_metadata
-from terrautils.extractors import TerrarefExtractor,  \
-    build_metadata, build_dataset_hierarchy_crawl, file_exists, check_file_in_dataset
+from terrautils.extractors import build_metadata, build_dataset_hierarchy_crawl, file_exists, \
+     check_file_in_dataset
 from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
 from pipelineutils.extractors import PipelineExtractor
@@ -366,11 +365,13 @@ class ClipByShape(PipelineExtractor):
         if not datestamp is None:
             try:
                 datestamp = self.get_datestamp(datestamp)
+            # pylint: disable=broad-except
             except Exception:
                 datestamp = None
         if datestamp is None:
             try:
                 datestamp = self.get_datestamp(dataset_name)
+            # pylint: disable=broad-except
             except Exception:
                 datestamp = None
         # Still no datestamp, use today's date
@@ -397,8 +398,7 @@ class ClipByShape(PipelineExtractor):
                     if one_name.find("observationUnitName"):
                         plot_name_idx = one_name
                         break
-                    elif (one_name.find('plot') >= 0) and 
-                          ((one_name.find('name') >= 0) or one_name.find('id')):
+                    elif (one_name.find('plot') >= 0) and ((one_name.find('name') >= 0) or one_name.find('id')):
                         plot_name_idx = one_name
                         break
                     elif one_name == 'id':
@@ -466,7 +466,7 @@ class ClipByShape(PipelineExtractor):
                     continue
 
                 self.log_info(resource, "Attempting to clip '" + filename + "' to polygon number " +
-                                str(alternate_plot_id))
+                              str(alternate_plot_id))
 
                 # Create destination folder on disk if we haven't done that already
                 if not os.path.exists(os.path.dirname(out_file)):
