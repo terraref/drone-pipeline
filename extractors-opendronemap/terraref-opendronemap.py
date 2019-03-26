@@ -95,6 +95,9 @@ class ODMFullFieldStitcher(PipelineExtractor, OpenDroneMapStitch):
     # pylint: disable=arguments-differ
     def dosetup(self, odm_args):
         """Performs setup of our instances by defaulting our sensor
+
+        Args:
+            odm_args(Namespace): OpenDroneMap specific processing arguments
         """
         # parse command line and load default logging configuration
         PipelineExtractor.setup(self, sensor='rgb_fullfield')
@@ -105,7 +108,14 @@ class ODMFullFieldStitcher(PipelineExtractor, OpenDroneMapStitch):
     # pylint: disable=too-many-arguments
     def check_message(self, connector, host, secret_key, resource, parameters):
         """Explicitly calls through to our OpenDroneMapStitch parent instance
-        """
+
+        Args:
+             connector(obj): the message queue connector instance
+            host(str): the URI of the host making the connection
+            secret_key(str): used with the host API
+            resource(dict): dictionary containing the resources associated with the request
+            parameters(json): json object of the triggering message contents
+       """
         return OpenDroneMapStitch.check_message(self, connector, host, secret_key,
                                                 resource, parameters)
 
@@ -266,7 +276,7 @@ class ODMFullFieldStitcher(PipelineExtractor, OpenDroneMapStitch):
         """
 
         # Start of message processing
-        super(ODMFullFieldStitcher, self).start_message(resource)
+        self.start_message(resource)
 
         # Handle any parameters
         if isinstance(parameters, basestring):
@@ -290,6 +300,11 @@ class ODMFullFieldStitcher(PipelineExtractor, OpenDroneMapStitch):
         dataset_name = parameters["datasetname"]
         scan_name = parameters["scan_type"] if "scan_type" in parameters else ""
         season_name, experiment_name = "Unknown Season", "Unknown Experiment"
+
+        # Change the base path of files to include the user by tweaking the sensor's value
+        _, new_base = self.get_username_with_base_path(host, secret_key, dataset_name, self.sensors.base)
+        sensor_old_base = self.sensors.base
+        self.sensors.base = new_base
 
         # Get the best timestamp
         timestamp = self.get_datestamp(dataset_name)
@@ -325,6 +340,8 @@ class ODMFullFieldStitcher(PipelineExtractor, OpenDroneMapStitch):
         if thumb_exists and med_exists and full_exists and not self.overwrite:
             if  png_exists:
                 self.log_skip(resource, "all outputs already exist")
+                # Restore anything we need to before returning
+                self.sensors.base = sensor_old_base
                 return
             else:
                 self.log_info(resource, "all outputs already exist (10% PNG thumbnail must still be generated)")
@@ -425,7 +442,9 @@ class ODMFullFieldStitcher(PipelineExtractor, OpenDroneMapStitch):
             if not self.sensor_maps[sp]["dir"].startswith(base):
                 check_delete_folder(self.sensor_maps[sp]["dir"])
 
-        # We are done
+        # We are done, restore fields we've modified (also be sure to restore fields in the
+        # early return in the code above)
+        self.sensors.base = sensor_old_base
         self.end_message(resource)
 
 if __name__ == "__main__":
