@@ -10,7 +10,7 @@ def description():
 
 setup(name='pipelineutils',
       packages=find_packages(),
-      version='1.0.0',
+      version='1.0.2',
       include_package_data=True,
       description='drone-pipeline workflow utilities',
       long_description=description(),
