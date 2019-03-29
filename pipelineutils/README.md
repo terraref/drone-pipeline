@@ -27,7 +27,7 @@ To build the library the following command is used:
 `python setup.py sdist bdist_wheel`
 
 ### Install locally
-The following command installs the release locally (replace '<version>' with the actual version number): 
+The following command installs the release locally (replace `<version>` with the actual version number): 
 `sudo -H pip install -U pipelineutils==<version>`
 
 ### Push to PyPi
