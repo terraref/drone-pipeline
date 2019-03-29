@@ -17,10 +17,12 @@ from pyclowder.utils import CheckMessage
 from pyclowder.files import upload_to_dataset
 from pyclowder.datasets import upload_metadata, remove_metadata
 from terrautils.extractors import build_metadata, build_dataset_hierarchy_crawl, file_exists, \
-     check_file_in_dataset
+     check_file_in_dataset, load_json_file
 from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
 from pipelineutils.extractors import PipelineExtractor
+from pipelineutils.metadata import season_experiment_timestamp_from_metadata, \
+     pipeline_get_season_experiment_timestamp
 
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
@@ -47,14 +49,20 @@ class ClipByShape(PipelineExtractor):
         """
         super(ClipByShape, self).__init__()
 
-        # Our default
+        # Our default values
         identify_binary = os.getenv('IDENTIFY_BINARY', '/usr/bin/identify')
+        experiment_filename = os.getenv('EXPERIMENT_FILENAME', 'experiment.json')
 
         # Add any additional arguments to parser
         self.parser.add_argument('--identify-binary', nargs='?', dest='identify_binary',
                                  default=identify_binary,
                                  help='Identify executable used to for image type capture ' +
                                  '(default=' + identify_binary + ')')
+
+        self.parser.add_argument('--experiment_json_file', nargs='?', dest='experiment_json_file',
+                                 default=experiment_filename,
+                                 help='Default name of experiment configuration file used to' \
+                                      ' provide additional processing information')
 
         # parse command line and load default logging configuration
         self.setup(sensor='clipbyshape')
@@ -63,7 +71,15 @@ class ClipByShape(PipelineExtractor):
     def config_file_name(self):
         """Returns the name of the expected configuration file
         """
-        return 'experiment.json'
+        # pylint: disable=line-too-long
+        return 'experiment.json' if not self.args.experiment_json_file else self.args.experiment_json_file
+        # pylint: enable=line-too-long
+
+    @property
+    def dataset_metadata_file_ending(self):
+        """ Returns the ending string of a dataset metadata JSON file name
+        """
+        return '_dataset_metadata.json'
 
     # Returns if the mime type of 'image' is found in the text passed in. A reasonable effort is
     # made to identify the section containing the type by looking for the phrase 'Mime', or 'mime',
@@ -136,6 +152,7 @@ class ClipByShape(PipelineExtractor):
         # pylint: disable=broad-except
         except Exception:
             pass
+        # pylint: enable=broad-except
 
         return False
 
@@ -191,13 +208,12 @@ class ClipByShape(PipelineExtractor):
             The bounds tuple contains the min and max Y point values, followed by the min and
             max X point values.
         """
+        # pylint: enable=no-self-use
         shapefile, dbffile = None, None
         imagefiles = []
 
         for onefile in files:
             if onefile.endswith(".shp"):
-                # pylint: disable=line-too-long
-
                 # We give priority to the shapefile that triggered the extraction over any other
                 # shapefiles that may exist
                 if triggering_file is None or triggering_file.endswith(onefile):
@@ -212,8 +228,10 @@ class ClipByShape(PipelineExtractor):
                 # Create the equivelent name of the shapefile and see if we're a match
                 filename_test = os.path.splitext(os.path.basename(onefile))[0] + ".shp"
                 # If we haven't seen a shape file, or we're the same name, then we have what we want
+                # pylint: disable=line-too-long
                 if (not shapefile is None and shapefile.endswith(filename_test)) or (triggering_file is None) or (triggering_file.endswith(filename_test)):
                     dbffile = onefile
+                # pylint: enable=line-too-long
             elif self.file_is_image_type(onefile):
                 # If the file has a geo shape we store it for clipping
                 bounds = self.image_get_geobounds(onefile)
@@ -228,20 +246,23 @@ class ClipByShape(PipelineExtractor):
                     poly = ogr.Geometry(ogr.wkbPolygon)
                     poly.AddGeometry(ring)
 
+                    # pylint: disable=line-too-long
                     imagefiles[onefile] = {'bounds' : poly,
                                            'bounding_tuples' : (bounds[1], bounds[3], bounds[0], bounds[2]) # Ymin, Ymax, Xmin, Xmax
                                           }
+                    # pylint: enable=line-too-long
 
         # Return what we've found
         return (shapefile, dbffile, imagefiles)
 
     # Find pipeline JSON and essential fields
-    # pylint: disable=no-self-use
-    def find_pipeline_json(self, files, default_season_name, default_experiment_name,
+    # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
+    def find_pipeline_json(self, resource, files, default_season_name, default_experiment_name,
                            default_timestamp):
         """Attempts to find the file containing the pipeline JSON and load it
 
         Args:
+            resource(dict): dictionary containing the resources associated with the request
             files(list): list of available file paths to look through
             default_season_name(str): value to return for season if JSON not found, or season not
                                       configured
@@ -254,26 +275,46 @@ class ClipByShape(PipelineExtractor):
             A list containing the season name, experiment name, timestamp, and JSON is returned.
             The first three may be the default values passed in if a JSON file wasn't found, of
             the fields weren't specified or were invalid. The JSON return value may be None if a
-            configuration file wasn't found or pipeline parameters weren't specified.
+            configuration file wasn't found or pipeline parameters weren't specified. The JSON
+            return will also be None if the Terra Ref metadata in the dataset is used to
+            determine the values.
+
+        Note:
+            A configuration file will override any parameters set in a dataset's metadata
         """
         # Initialize our return variables
         # pylint: disable=line-too-long
-        ret_season, ret_experiment, ret_timestamp = (default_season_name, default_experiment_name, default_timestamp)
+        (ret_season, ret_experiment, ret_timestamp) = (default_season_name, default_experiment_name, default_timestamp)
+        # pylint: enable=line-too-long
         ret_json = None
 
-        # Find the JSON file
-        found_file = None
-        target_file = self.config_file_name
+        # Find the JSON files
+        config_file = None
+        dataset_file = None
+        target_config_file = self.config_file_name
+        target_dataset_file = self.dataset_metadata_file_ending
         for onefile in files:
-            if onefile.endswith(target_file):
-                found_file = onefile
+            if onefile.endswith(target_config_file):
+                config_file = onefile
+            elif onefile.endswith(target_dataset_file):
+                dataset_file = onefile
+            if (not config_file is None) and (not dataset_file is None):
                 break
 
-        # Load the JSON file if we found it
-        if found_file:
+        # See if we can find the information we need in the dataset metadata
+        if not dataset_file is None:
+            # pylint: disable=line-too-long
+            (ret_season, ret_experiment, ret_timestamp, ret_json) = season_experiment_timestamp_from_metadata(dataset_file,
+                                                                                                              ret_season,
+                                                                                                              ret_experiment,
+                                                                                                              ret_timestamp,
+                                                                                                              resource['dataset_info']['name'])
+            # pylint: enable=line-too-long
+
+        # Load the settings JSON file if we found it
+        if config_file:
             try:
-                handle = open(found_file)
-                ret_json = json.load(handle)
+                ret_json = load_json_file(config_file)
 
                 if 'pipeline' in ret_json:
                     ret_json = ret_json['pipeline']
@@ -282,15 +323,19 @@ class ClipByShape(PipelineExtractor):
             # pylint: disable=broad-except
             except Exception:
                 ret_json = None
+            # pylint: enable=broad-except
 
-        # Set variables to return based upon JSON content
-        if not ret_json is None:
-            if 'season' in ret_json:
-                ret_season = ret_json['season']
-            if 'studyName' in ret_json:
-                ret_experiment = ret_json['studyName']
-            if 'observationTimeStamp' in ret_json:
-                ret_timestamp = ret_json['observationTimeStamp']
+            # Set variables to return based upon JSON content
+            if not ret_json is None:
+                # pylint: disable=line-too-long
+                (pl_season, pl_experiment, pl_timestamp) = pipeline_get_season_experiment_timestamp(ret_json)
+                # pylint: enable=line-too-long
+                if not pl_season is None:
+                    ret_season = pl_season
+                if not pl_experiment is None:
+                    ret_experiment = pl_experiment
+                if not pl_timestamp is None:
+                    ret_timestamp = pl_timestamp
 
         return (ret_season, ret_experiment, ret_timestamp, ret_json)
 
@@ -312,10 +357,7 @@ class ClipByShape(PipelineExtractor):
         return CheckMessage.ignore
 
     # Entry point for processing messages
-    # pylint: disable=too-many-arguments
-    # pylint: disable=too-many-branches
-    # pylint: disable=too-many-statements
-    # pylint: disable=too-many-locals
+    # pylint: disable=too-many-arguments, too-many-branches, too-many-statements, too-many-locals
     def process_message(self, connector, host, secret_key, resource, parameters):
         """Performs plot level image extraction
 
@@ -343,8 +385,8 @@ class ClipByShape(PipelineExtractor):
         uploaded_file_ids = []
 
         # Find the files we're interested in
-        shapefile, dbffile, imagefiles = self.find_needed_files(resource['local_paths'],
-                                                                resource['triggering_file'])
+        (shapefile, dbffile, imagefiles) = self.find_needed_files(resource['local_paths'],
+                                                                  resource['triggering_file'])
         if shapefile is None:
             self.log_skip(resource, "No shapefile found")
             return
@@ -355,7 +397,13 @@ class ClipByShape(PipelineExtractor):
 
         # Find pipeline JSON and essential fields
         # pylint: disable=line-too-long
-        season_name, experiment_name, datestamp, config_json = self.find_pipeline_json(resource['local_paths'], season_name, experiment_name, None)
+        (season_name, experiment_name, datestamp, config_json) = self.find_pipeline_json(resource,
+                                                                                         resource['local_paths'],
+                                                                                         season_name,
+                                                                                         experiment_name,
+                                                                                         None)
+        # pylint: enable=line-too-long
+
         if 'extractors' in config_json:
             extractor_json = config_json['extractors']
             if 'plot_column_name' in extractor_json:
@@ -392,10 +440,19 @@ class ClipByShape(PipelineExtractor):
         if dbffile:
             shape_table = DBF(dbffile, lowernames=True, ignore_missing_memofile=True)
             shape_rows = iter(list(shape_table))
+
+            # Make sure if we have the column name of plot-names specified that it exists in
+            # the shapefile
+            column_names = shape_table.field_names
+            if (not plot_name_idx is None) and (not plot_name_idx in column_names):
+                ValueError(resource, "Shapefile data does not have specified plot name" +
+                           " column '" + plot_name_idx + "'")
+
+            # Lookup a plot name field to use
             if plot_name_idx is None:
-                column_names = shape_table.field_names
                 for one_name in column_names:
-                    if one_name.find("observationUnitName"):
+                    # pylint: disable=line-too-long
+                    if one_name == "observationUnitName":
                         plot_name_idx = one_name
                         break
                     elif (one_name.find('plot') >= 0) and ((one_name.find('name') >= 0) or one_name.find('id')):
@@ -404,6 +461,7 @@ class ClipByShape(PipelineExtractor):
                     elif one_name == 'id':
                         plot_name_idx = one_name
                         break
+                    # pylint: enable=line-too-long
             if plot_name_idx is None:
                 ValueError(resource, "Shapefile data does not have a plot name field '" +
                            os.path.basename(dbffile) + "'")
