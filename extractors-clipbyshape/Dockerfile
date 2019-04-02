@@ -33,4 +33,4 @@ CMD ["extractor"]
 ENV RABBITMQ_EXCHANGE="terra" \
     RABBITMQ_VHOST="%2F" \
     RABBITMQ_QUEUE="terra.dronepipeline.clipbyshape" \
-    MAIN_SCRIPT="terraref-clip_by_shape.py"
+    MAIN_SCRIPT="terra_clipbyshape.py"
