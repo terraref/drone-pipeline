@@ -13,13 +13,15 @@ from osgeo import gdal, ogr
 from numpy import nan
 from dbfread import DBF
 
+import pyclowder.datasets as clowder_dataset
+import pyclowder.files as clowder_file
 from pyclowder.utils import CheckMessage
-from pyclowder.files import upload_to_dataset
-from pyclowder.datasets import upload_metadata, remove_metadata
+
 from terrautils.extractors import build_metadata, build_dataset_hierarchy_crawl, file_exists, \
-     check_file_in_dataset, load_json_file
+     upload_to_dataset, check_file_in_dataset, load_json_file
 from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
+
 from pipelineutils.extractors import PipelineExtractor
 from pipelineutils.metadata import season_experiment_timestamp_from_metadata, \
      pipeline_get_season_experiment_timestamp
@@ -30,9 +32,9 @@ from pipelineutils.metadata import season_experiment_timestamp_from_metadata, \
 # without many code changes
 if 'ua-mac' in STATIONS:
     if 'clipbyshape' not in STATIONS['ua-mac']:
-        STATIONS['ua-mac']['clipbyshape'] = {'display': 'Plot Clipper',
+        STATIONS['ua-mac']['clipbyshape'] = {'display': 'SHapefile Plot Clipper',
                                              'template': '{base}/{station}/Level_2_Plots/' + \
-                                                         '{sensor}/{date}/{timestamp}/{filename}'
+                                                         '{sensor}/{date}/{plot}/{filename}'
                                             }
 
 # The class for clipping images by shape
@@ -81,6 +83,21 @@ class ClipByShape(PipelineExtractor):
         """
         return '_dataset_metadata.json'
 
+    @property
+    def file_infodata_file_ending(self):
+        """ Returns the ending string of a file's info JSON file name
+        """
+        return '_info.json'
+
+    # List of file extensions we will probably see that we don't need to check for being
+    # an image type
+    @property
+    def known_non_image_ext(self):
+        """Returns an array of file extensions that we will see that
+           are definitely not an image type
+        """
+        return ["dbf", "json", "prj", "shp", "shx", "txt"]
+
     # Returns if the mime type of 'image' is found in the text passed in. A reasonable effort is
     # made to identify the section containing the type by looking for the phrase 'Mime', or 'mime',
     # or 'MIME' and using that as the basis for determining the type
@@ -124,44 +141,60 @@ class ClipByShape(PipelineExtractor):
             return False
 
         # Look for a 'reasonable' image mime type
-        if mime.endwith('image'):
+        if mime.endswith('image'):
             return True
 
         return False
 
     # Determines if the file is an image type
-    def file_is_image_type(self, filename):
+    def file_is_image_type(self, resource, filename):
         """Uses the identify application to generate the MIME type of the file and
            looks for an image MIME type
 
         Args:
+            resource(dict): dictionary containing the resources associated with the request
             filename(str): the path to the file to check
 
         Returns:
             True is returned if the file is a MIME image type
             False is returned upon failure or the file is not a type of image
         """
+        # Try to determine the file type from its JSON information (metadata if from Clowder API)
+        try:
+            infodata_name = filename +  self.file_infodata_file_ending
+            if file_exists(infodata_name):
+                file_md = load_json_file(infodata_name)
+                if file_md:
+                    if 'contentType' in file_md:
+                        if file_md['contentType'].startswith('image'):
+                            return True
+        # pylint: disable=broad-except
+        except Exception as ex:
+            self.log_info(resource, "Exception caught: " + str(ex))
+        # pylint: enable=broad-except
+
         # Try to determine the file type locally
         try:
             is_image_type = self.find_image_mime_type(
                 subprocess.check_output(
-                    [self.args.image_binary, "-verbose", filename], stderr=subprocess.STDOUT))
+                    [self.args.identify_binary, "-verbose", filename], stderr=subprocess.STDOUT))
 
             if not is_image_type is None:
                 return is_image_type
         # pylint: disable=broad-except
-        except Exception:
-            pass
+        except Exception as ex:
+            self.log_info(resource, "Exception caught: " + str(ex))
         # pylint: enable=broad-except
 
         return False
 
     # Checks if the file has geometry associated with it and returns the bounds
     # pylint: disable=no-self-use
-    def image_get_geobounds(self, filename):
+    def image_get_geobounds(self, resource, filename):
         """Uses gdal functionality to retrieve recilinear boundaries
 
         Args:
+            resource(dict): dictionary containing the resources associated with the request
             filename(str): path of the file to get the boundaries from
 
         Returns:
@@ -177,17 +210,53 @@ class ClipByShape(PipelineExtractor):
 
             return [ulx, uly, lrx, lry]
         # pylint: disable=broad-except
-        except Exception:
-            pass
+        except Exception as ex:
+            self.log_info(resource, "Exception caught: " + str(ex))
+        # pylint: enable=broad-except
 
         return [nan, nan, nan, nan]
 
+    # Get the tuple from the passed in polygon
+    def polygon_to_tuples(self, polygon):
+        """Convert polygon passed in to
+            ( lat (y) min, lat (y) max,
+              long (x) min, long (x) max) for geotiff creation
+
+        Args:
+            polygon(object) - OGR Polygon (type ogr.wkbPolygon)
+
+        Return:
+            A tuple of  (min Y, max Y, min X, max X)
+        """
+        min_x, min_y, max_x, max_y = None, None, None, None
+        try:
+            if polygon.GetGeometryType() == ogr.wkbPolygon:
+                ring = polygon.GetGeometryRef(0)
+                point_count = ring.GetPointCount()
+                for point_idx in xrange(point_count):
+                    pt_x, pt_y, _ = ring.GetPoint(point_idx)
+                    if min_x is None or pt_x < min_x:
+                        min_x = pt_x
+                    if max_x is None or pt_x > max_x:
+                        max_x = pt_x
+                    if min_y is None or pt_y < min_y:
+                        min_y = pt_y
+                    if max_y is None or pt_y > max_y:
+                        max_y = pt_y
+        # pylint: disable=broad-except
+        except Exception as ex:
+            self.logger.warn("[polygon_to_tuples] Exception: %s", str(ex))
+        # pylint: enable=broad-except
+
+        return (min_y, max_y, min_x, max_x)
+
     # Look through the file list to find the files we need
     # pylint: disable=no-self-use
-    def find_needed_files(self, files, triggering_file=None):
+    def find_needed_files(self, resource, files, triggering_file):
         """Finds files that are needed for extracting plots from an orthomosaic
 
         Args:
+            resource(dict): dictionary containing the resources associated with the request
             files(list): the list of file to look through and access
             triggering_file(str): optional parameter specifying the file that triggered the
             extraction
@@ -210,7 +279,7 @@ class ClipByShape(PipelineExtractor):
         """
         # pylint: enable=no-self-use
         shapefile, dbffile = None, None
-        imagefiles = []
+        imagefiles = {}
 
         for onefile in files:
             if onefile.endswith(".shp"):
@@ -232,25 +301,30 @@ class ClipByShape(PipelineExtractor):
                 if (not shapefile is None and shapefile.endswith(filename_test)) or (triggering_file is None) or (triggering_file.endswith(filename_test)):
                     dbffile = onefile
                 # pylint: enable=line-too-long
-            elif self.file_is_image_type(onefile):
-                # If the file has a geo shape we store it for clipping
-                bounds = self.image_get_geobounds(onefile)
-                if bounds[0] != nan:
-                    ring = ogr.Geometry(ogr.wkbLinearRing)
-                    ring.AddPoint(bounds[0], bounds[1])     # Upper left
-                    ring.AddPoint(bounds[2], bounds[1])     # Upper right
-                    ring.AddPoint(bounds[2], bounds[3])     # lower right
-                    ring.AddPoint(bounds[0], bounds[3])     # lower left
-                    ring.AddPoint(bounds[0], bounds[1])     # Closing the polygon
+            else:
+                ext = os.path.splitext(os.path.basename(onefile))[1].lstrip('.')
+                if not ext in self.known_non_image_ext:
+                    if self.file_is_image_type(resource, onefile):
+                        # If the file has a geo shape we store it for clipping
+                        bounds = self.image_get_geobounds(resource, onefile)
+                        if bounds[0] != nan:
+                            ring = ogr.Geometry(ogr.wkbLinearRing)
+                            ring.AddPoint(bounds[0], bounds[1])     # Upper left
+                            ring.AddPoint(bounds[2], bounds[1])     # Upper right
+                            ring.AddPoint(bounds[2], bounds[3])     # lower right
+                            ring.AddPoint(bounds[0], bounds[3])     # lower left
+                            ring.AddPoint(bounds[0], bounds[1])     # Closing the polygon
 
-                    poly = ogr.Geometry(ogr.wkbPolygon)
-                    poly.AddGeometry(ring)
+                            poly = ogr.Geometry(ogr.wkbPolygon)
+                            poly.AddGeometry(ring)
 
-                    # pylint: disable=line-too-long
-                    imagefiles[onefile] = {'bounds' : poly,
-                                           'bounding_tuples' : (bounds[1], bounds[3], bounds[0], bounds[2]) # Ymin, Ymax, Xmin, Xmax
-                                          }
-                    # pylint: enable=line-too-long
+                            bounds_tuple = self.polygon_to_tuples(poly)
+
+                            # pylint: disable=line-too-long
+                            imagefiles[onefile] = {'bounds' : poly,
+                                                   'bounding_tuples' : bounds_tuple
+                                                  }
+                            # pylint: enable=line-too-long
 
         # Return what we've found
         return (shapefile, dbffile, imagefiles)
@@ -321,7 +395,8 @@ class ClipByShape(PipelineExtractor):
                 else:
                     ret_json = None
             # pylint: disable=broad-except
-            except Exception:
+            except Exception as ex:
+                self.log_info(resource, "Exception caught: " + str(ex))
                 ret_json = None
             # pylint: enable=broad-except
 
@@ -384,8 +459,15 @@ class ClipByShape(PipelineExtractor):
         # Array containing the links to uploaded files
         uploaded_file_ids = []
 
+        # Change the base path of files to include the user by tweaking the sensor's value
+        _, new_base = self.get_username_with_base_path(host, secret_key, dataset_name,
+                                                       self.sensors.base)
+        sensor_old_base = self.sensors.base
+        self.sensors.base = new_base
+
         # Find the files we're interested in
-        (shapefile, dbffile, imagefiles) = self.find_needed_files(resource['local_paths'],
+        (shapefile, dbffile, imagefiles) = self.find_needed_files(resource,
+                                                                  resource['local_paths'],
                                                                   resource['triggering_file'])
         if shapefile is None:
             self.log_skip(resource, "No shapefile found")
@@ -394,6 +476,17 @@ class ClipByShape(PipelineExtractor):
         if num_image_files <= 0:
             self.log_skip(resource, "No image files with geographic boundaries found")
             return
+
+        # Build up a list of image IDs
+        image_ids = {}
+        if 'files' in resource:
+            for one_image in imagefiles:
+                image_name = os.path.basename(one_image)
+                for res_file in resource['files']:
+                    # pylint: disable=line-too-long
+                    if ('filename' in res_file) and ('id' in res_file) and (image_name == res_file['filename']):
+                    # pylint: enable=line-too-long
+                        image_ids[image_name] = res_file['id']
 
         # Find pipeline JSON and essential fields
         # pylint: disable=line-too-long
@@ -404,10 +497,11 @@ class ClipByShape(PipelineExtractor):
                                                                                          None)
         # pylint: enable=line-too-long
 
-        if 'extractors' in config_json:
-            extractor_json = config_json['extractors']
-            if 'plot_column_name' in extractor_json:
-                plot_name_idx = extractor_json['plot_column_name']
+        if config_json:
+            if 'extractors' in config_json:
+                extractor_json = config_json['extractors']
+                if 'plot_column_name' in extractor_json:
+                    plot_name_idx = extractor_json['plot_column_name']
 
         # If we don't have a valid date from the user yet, check the dataset name for one
         if not datestamp is None:
@@ -426,7 +520,7 @@ class ClipByShape(PipelineExtractor):
         if datestamp is None:
             datestamp = datetime.datetime.today().strftime('%Y-%m-%d')
 
-        # Check our current status
+        # Check our current local variables
         if dbffile is None:
             self.log_info(resource, "DBF file not found, using default plot naming")
         self.log_info(resource, "Extracting plots using shapefile '" + os.path.basename(shapefile) +
@@ -435,7 +529,7 @@ class ClipByShape(PipelineExtractor):
         # Load the shapes and find the plot name column if we have a DBF file
         shape_in = ogr.Open(shapefile)
         layer = shape_in.GetLayer(os.path.split(os.path.splitext(shapefile)[0])[1])
-        poly = layer.GetNextFeature()
+        feature = layer.GetNextFeature()
 
         if dbffile:
             shape_table = DBF(dbffile, lowernames=True, ignore_missing_memofile=True)
@@ -467,12 +561,15 @@ class ClipByShape(PipelineExtractor):
                            os.path.basename(dbffile) + "'")
 
         # Setup for the extracted plot images
-        sensor_name = "rgb_geotiff"
+        sensor_name = "plotclipper"
         plot_display_name = self.sensors.get_display_name(sensor=sensor_name) + " (By Plot)"
 
         # Loop through each polygon and extract plot level data
         alternate_plot_id = 0
-        while poly:
+        while feature:
+
+            # Current geometry to extract
+            plot_poly = feature.GetGeometryRef()
 
             # Determie the plot name to use
             plot_name = None
@@ -480,7 +577,7 @@ class ClipByShape(PipelineExtractor):
             if shape_rows and plot_name_idx:
                 try:
                     row = next(shape_rows)
-                    plot_name = row[plot_name_idx]
+                    plot_name = str(row[plot_name_idx])
                 except StopIteration:
                     pass
             if not plot_name:
@@ -511,16 +608,21 @@ class ClipByShape(PipelineExtractor):
 
                 # Checking for geographic overlap and skip if there is none
                 bounds = imagefiles[filename]['bounds']
-                intersection = poly.Intersection(bounds)
-                if intersection.GetArea() <= 0:
+                intersection = plot_poly.Intersection(bounds)
+
+                if intersection.GetArea() == 0.0:
+                    self.log_info(resource, "Skipping image: "+filename)
                     continue
 
                 # Determine where we're putting the clipped file on disk and determine overwrite
                 # pylint: disable=unexpected-keyword-arg
-                out_file = self.sensors.create_sensor_path(datestamp, filename=filename,
-                                                           plot=plot_name, subsensor=sensor_name)
+                out_file = self.sensors.create_sensor_path(datestamp,
+                                                           filename=os.path.basename(filename),
+                                                           plot=plot_name,
+                                                           subsensor=sensor_name)
                 if (file_exists(out_file) and not self.overwrite):
                     # The file exists and don't want to overwrite it
+                    self.logger.warn("Skipping existing output file: %s", out_file)
                     continue
 
                 self.log_info(resource, "Attempting to clip '" + filename + "' to polygon number " +
@@ -531,30 +633,55 @@ class ClipByShape(PipelineExtractor):
                     os.makedirs(os.path.dirname(out_file))
 
                 # Clip the raster
-                clip_raster(filename, imagefiles[filename]['bounding_tuples'], out_path=out_file)
+                bounds_tuple = self.polygon_to_tuples(plot_poly)
+
+                clip_pix = clip_raster(filename, bounds_tuple, out_path=out_file)
+                if clip_pix is None:
+                    self.log_error(resource, "Failed to clip image to plot name " + plot_name)
+                    continue
 
                 # Upload the clipped image to the dataset
                 found_in_dest = check_file_in_dataset(connector, host, secret_key, target_dsid,
                                                       out_file, remove=self.overwrite)
                 if not found_in_dest or self.overwrite:
-                    fileid = upload_to_dataset(connector, host, secret_key, target_dsid, out_file)
+                    image_name = os.path.basename(filename)
+                    content = {
+                        "comment": "Clipped from shapefile " + os.path.basename(shapefile),
+                        "imageName": image_name
+                    }
+                    if image_name in image_ids:
+                        content['imageID'] = image_ids[image_name]
+
+                    fileid = upload_to_dataset(connector, host, self.clowder_user,
+                                               self.clowder_pass, target_dsid, out_file)
                     uploaded_file_ids.append(host + ("" if host.endswith("/") else "/") +
                                              "files/" + fileid)
+
+                    # Generate our metadata
+                    meta = build_metadata(host, self.extractor_info, fileid, content, 'file')
+                    clowder_file.upload_metadata(connector, host, secret_key, fileid, meta)
+                else:
+                    self.logger.warn("Skipping existing file in dataset: %s", out_file)
 
                 self.created += 1
                 self.bytes += os.path.getsize(out_file)
 
             # Get the next shape to extract
-            poly = layer.GetNextFeature()
+            feature = layer.GetNextFeature()
 
         # Tell Clowder this is completed so subsequent file updates don't daisy-chain
         extractor_md = build_metadata(host, self.extractor_info, resource['id'], {
             "files_created": uploaded_file_ids
         }, 'dataset')
-        self.log_info(resource, "Uploading shapefile plot extractor metadata to Level_2 dataset")
-        remove_metadata(connector, host, secret_key, resource['id'], self.extractor_info['name'])
-        upload_metadata(connector, host, secret_key, resource['id'], extractor_md)
+        self.log_info(resource,
+                      "Uploading shapefile plot extractor metadata to Level_2 dataset: "
+                      + str(extractor_md))
+        clowder_dataset.remove_metadata(connector, host, secret_key, resource['id'],
+                                        self.extractor_info['name'])
+        clowder_dataset.upload_metadata(connector, host, secret_key, resource['id'], extractor_md)
 
+        # Signal end of processing message and restore changed variables
+        self.sensors.base = sensor_old_base
         self.end_message(resource)
 
 if __name__ == "__main__":
