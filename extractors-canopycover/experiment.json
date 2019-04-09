@@ -1,0 +1,12 @@
+{
+    "pipeline": {
+        "studyName": "My Experiment",
+        "season": "Season X",
+        "year": "2018",
+        "observationTimeStamp": "2018-12-12T22:03:51-04:00",
+        "germplasmSpecies": "Sorghum bicolor",
+        "extractors": {
+            "plot_column_name": "observationUnitName",
+        },
+    }
+}
