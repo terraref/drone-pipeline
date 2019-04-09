@@ -751,8 +751,9 @@ class CanopyCover(PipelineExtractor):
 
                     # Prepare the data for writing
                     image_clowder_id = ""
-                    if filename in image_ids:
-                        image_clowder_id = image_ids[filename]
+                    image_name = os.path.basename(filename)
+                    if image_name in image_ids:
+                        image_clowder_id = image_ids[image_name]
                     centroid = plot_poly.Centroid()
 
                     # Write the datapoint geographically and otherwise
