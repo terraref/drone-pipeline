@@ -35,11 +35,14 @@ For example, a custom pipeline job submission API may not be available immediate
 
 ## User Stories
 
-[User stories](https://github.com/terraref/drone-pipeline/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22user+story%22) are used to define the goals and needs of drone pipeline users.
+[User stories](https://github.com/terraref/drone-pipeline/issues/new/choose) are used to define the goals and needs of drone pipeline users.
+
+## Code Of Conduct
+Follow the link to read our [Code of Conduct](https://github.com/terraref/drone-pipeline/CODEOFCONDUCT.md) stored on our GitHub repository.
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTING.md) for details on our Code Of Conduct, the process of submitting pull requests, and other details.
+Please read [CONTRIBUTING.md](https://github.com/terraref/drone-pipeline/CONTRIBUTING.md) for details on how anyone can contribute to this project.
 
 ## Versioning 
 
@@ -49,8 +52,19 @@ Note that a tag may contain older code for what you are interested in since only
 ## Authors
 
 * Dr. David Shaner LeBauer - Principal Architect and visionary - University of Arizona
-* Christophe Schnaufer - Initial contributor - University of Arizona
+* Christophe Schnaufer - Lead Developer - University of Arizona
+
+We are building off the efforts of the [TERRA REF](https://github.com/terraref) folks.
+Here are some of the contributors to that effort in first name order:
+* [Charlie Zender](https://github.com/czender)
+* [Craig Willis](https://github.com/craig-willis)
+* [Max Burnette](https://github.com/max-zilla)
+* [Nick Heyek](https://github.com/nheyek)
+* [Rob Kooper](https://github.com/robkooper)
+* [ZongyangLi](https://github.com/ZongyangLi)
+
+There are many others that have contributed, so head over to the project and check them out.
 
 ## Acknowledgments
 
-The [CONTRIBUTORS.md](https://github.com/terraref/drone-pipeline/blob/opendronemap/CONTRIBUTORS.md) file contains the list of contributors that wish to be acknowledged.
+The [CONTRIBUTORS.md](https://github.com/terraref/drone-pipeline/CONTRIBUTORS.md) file contains the list of contributors that wish to be acknowledged.
