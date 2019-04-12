@@ -14,8 +14,9 @@ This extractor uses the Clowder OpenDroneMap extractor as its starting point.
 
 _Input_
 
-  - Evaluation is triggered when a file named 'extractors-opendronemap.txt' is placed into a dataset
-  - All JPEG images in the dataset containing the 'extractors-opendronemap.txt' file are used
+  - A file named 'extractors-opendronemap.txt'
+  - All the JPEG images from a drone flight 
+  - (optionally) A ground control points file
 
 _Output_
 
@@ -26,6 +27,7 @@ _Output_
 ### Docker
 
 The Dockerfile included in this directory can be used to build this extractor in a container.
+A pre-built docker image can be downloaded from Docker Hub in the [TERRA REF](https://hub.docker.com/search?q=TERRAREF&type=image) project.
 
 _Building the Docker image_
 

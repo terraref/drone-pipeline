@@ -30,6 +30,7 @@ Once your user story is in the system it can be picked up and worked on by inter
 
 User stories are also a great way of providing a template on how using the drone pipeline provides a solutions.
 It's possible that someone's had similar needs and reading how a solution was reached can be helpful.
+They also help us by identifying common community needs.
 
 ## Contributing To Development
 
