@@ -611,8 +611,8 @@ class CanopyCover(PipelineExtractor):
                 extractor_json = config_json['extractors']
                 if 'plot_column_name' in extractor_json:
                     plot_name_idx = extractor_json['plot_column_name']
-            if 'germplasmSpecies' in config_json:
-                config_specie = config_json['germplasmSpecies']
+            if 'germplasmName' in config_json:
+                config_specie = config_json['germplasmName']
 
         # If we don't have a valid date from the user yet, check the dataset name for one
         if not datestamp is None:
