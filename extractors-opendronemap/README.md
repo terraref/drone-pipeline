@@ -4,7 +4,8 @@ Open Drone Map Orthomosaic, LAZ, and boundary shape file extractor
 
 ## Authors:
 
-* Christophe Schnaufer, University of Arizona, Tucson AZ
+* Dr. David Shaner LeBauer, Project Lead, University of Arizona, Tucson AZ
+* Christophe Schnaufer, Lead Developer, University of Arizona, Tucson AZ
 
 ## Overview
 
