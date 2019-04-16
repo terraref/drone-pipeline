@@ -14,9 +14,8 @@ import logging
 from pyclowder.files import upload_metadata
 from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
-     check_file_in_dataset
+     check_file_in_dataset, confirm_clowder_info
 from terrautils.sensors import Sensors, STATIONS
-from pipelineutils.extractors import PipelineExtractor
 
 from opendm import config
 
@@ -41,7 +40,6 @@ if 'ua-mac' in STATIONS:
 
 
 # Deletes a folder tree and ensures the top level folder is deleted as well
-# pylint: disable=broad-except
 def check_delete_folder(folder):
     """Deletes a folder tree and ensures the top level folder is removes as well
     """
@@ -51,6 +49,7 @@ def check_delete_folder(folder):
             # If the top level folder is still around, delete it explicitly
             if os.path.exists(folder):
                 os.rmdir(folder)
+        # pylint: disable=broad-except
         except Exception as ex:
             logging.debug("Execption deleting folder %s", folder)
             logging.debug("  %s", ex.message)
@@ -105,7 +104,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             odm_args(Namespace): OpenDroneMap specific processing arguments
         """
         # parse command line and load default logging configuration
-        PipelineExtractor.setup(self, sensor=self.sensor_name)
+        TerrarefExtractor.setup(self, sensor=self.sensor_name)
         OpenDroneMapStitch.dosetup(self, odm_args)
 
     # Called to see if we want the message
@@ -320,8 +319,17 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         old_un, old_pw, old_space = (self.clowder_user, self.clowder_pass, self.clowderspace)
         self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context()
 
+        # Ensure that the clowder information is valid
+        if not confirm_clowder_info(host, secret_key, self.clowder_user, self.clowder_pass,
+                                    self.clowderspace):
+            self.log_error(resource, "Clowder configuration is invalid. Not processing " +\
+                                     "request")
+            self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
+            self.end_message(resource)
+            return
+
         # Change the base path of files to include the user by tweaking the sensor's value
-        _, new_base = self.get_username_with_base_path(host, secret_key, dataset_name,
+        _, new_base = self.get_username_with_base_path(host, secret_key, resource['id'],
                                                        self.sensors.base)
         sensor_old_base = self.sensors.base
         self.sensors.base = new_base
@@ -489,7 +497,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
         finally:
             # We are done, restore fields we've modified (also be sure to restore fields in the
-            # early return in the code above)
+            # early returns in the code above)
             self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
             self.sensors.base = sensor_old_base
             self.end_message(resource)
