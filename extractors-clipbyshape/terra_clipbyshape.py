@@ -73,9 +73,10 @@ def get_plot_name(name_idx, data):
     if isinstance(name_idx, list):
         for idx in name_idx:
             if idx in data:
-                plot_name += str(data[idx])
+                plot_name += str(data[idx]) + "_"
+        plot_name = plot_name.rstrip("_")
     elif name_idx in data:
-        plot_name = data[name_idx]
+        plot_name = str(data[name_idx])
 
     if plot_name == "":
         plot_name = None
@@ -262,8 +263,8 @@ class ClipByShape(TerrarefExtractor):
         self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context()
 
         # Ensure that the clowder information is valid
-        if not confirm_clowder_info(host, secret_key, self.clowder_user, self.clowder_pass,
-                                    self.clowderspace):
+        if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
+                                    self.clowder_pass):
             self.log_error(resource, "Clowder configuration is invalid. Not processing " +\
                                      "request")
             self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
@@ -295,8 +296,9 @@ class ClipByShape(TerrarefExtractor):
             if self.experiment_metadata:
                 if 'extractors' in self.experiment_metadata:
                     extractor_json = self.experiment_metadata['extractors']
-                    if 'plot_column_name' in extractor_json:
-                        plot_name_idx = extractor_json['plot_column_name']
+                    if 'shapefile' in extractor_json:
+                        if 'plot_column_name' in extractor_json['shapefile']:
+                            plot_name_idx = extractor_json['shapefile']['plot_column_name']
 
             # Check our current local variables
             if dbffile is None:
@@ -434,8 +436,7 @@ class ClipByShape(TerrarefExtractor):
 
                         fileid = upload_to_dataset(connector, host, self.clowder_user,
                                                    self.clowder_pass, target_dsid, out_file)
-                        uploaded_file_ids.append(host + ("" if host.endswith("/") else "/") +
-                                                 "files/" + fileid)
+                        uploaded_file_ids.append(fileid)
 
                         # Generate our metadata
                         meta = build_metadata(host, self.extractor_info, fileid, content, 'file')
@@ -450,16 +451,20 @@ class ClipByShape(TerrarefExtractor):
                 feature = layer.GetNextFeature()
 
             # Tell Clowder this is completed so subsequent file updates don't daisy-chain
-            extractor_md = build_metadata(host, self.extractor_info, resource['id'], {
-                "files_created": uploaded_file_ids
-            }, 'dataset')
-            self.log_info(resource,
-                          "Uploading shapefile plot extractor metadata to Level_2 dataset: "
-                          + str(extractor_md))
-            clowder_dataset.remove_metadata(connector, host, secret_key, resource['id'],
-                                            self.extractor_info['name'])
-            clowder_dataset.upload_metadata(connector, host, secret_key, resource['id'],
-                                            extractor_md)
+            id_len = len(uploaded_file_ids)
+            if id_len > 0 or self.created > 0:
+                extractor_md = build_metadata(host, self.extractor_info, resource['id'], {
+                    "files_created": uploaded_file_ids
+                }, 'dataset')
+                self.log_info(resource,
+                              "Uploading shapefile plot extractor metadata to Level_2 dataset: "
+                              + str(extractor_md))
+                clowder_dataset.remove_metadata(connector, host, secret_key, resource['id'],
+                                                self.extractor_info['name'])
+                clowder_dataset.upload_metadata(connector, host, secret_key, resource['id'],
+                                                extractor_md)
+            else:
+                self.logger.warn("Skipping dataset metadata updating since no files were loaded")
 
         finally:
             # Signal end of processing message and restore changed variables. Be sure to restore
