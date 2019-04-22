@@ -320,8 +320,8 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context()
 
         # Ensure that the clowder information is valid
-        if not confirm_clowder_info(host, secret_key, self.clowder_user, self.clowder_pass,
-                                    self.clowderspace):
+        if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
+                                    self.clowder_pass):
             self.log_error(resource, "Clowder configuration is invalid. Not processing " +\
                                      "request")
             self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
