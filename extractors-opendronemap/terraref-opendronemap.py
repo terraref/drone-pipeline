@@ -14,7 +14,7 @@ import logging
 from pyclowder.files import upload_metadata
 from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
-     check_file_in_dataset, confirm_clowder_info
+     check_file_in_dataset, confirm_clowder_info, timestamp_to_terraref
 from terrautils.sensors import Sensors, STATIONS
 
 from opendm import config
@@ -28,13 +28,13 @@ if 'ua-mac' in STATIONS:
     if 'laz' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['laz'] = {'display': 'Compressed point cloud',
                                      'template': '{base}/{station}/Level_2/' + \
-                                                 '{sensor}/{date}/{filename}',
+                                                 '{sensor}/{date}/{timestamp}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.laz'
                                     }
     if 'shp' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['shp'] = {'display': 'Shapefile',
                                      'template': '{base}/{station}/Level_2/' + \
-                                                 '{sensor}/{date}/{filename}',
+                                                 '{sensor}/{date}/{timestamp}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.shp'
                                     }
 
@@ -336,7 +336,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
         try:
             # Get the best timestamp
-            timestamp = self.find_datestamp(dataset_name)
+            timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
             season_name, experiment_name, _ = self.get_season_and_experiment(timestamp,
                                                                              self.sensor_name)
 
