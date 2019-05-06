@@ -6,6 +6,7 @@
 import os
 import json
 import logging
+import osr
 
 from osgeo import ogr
 from numpy import nan
@@ -16,10 +17,12 @@ import pyclowder.files as clowder_file
 from pyclowder.utils import CheckMessage
 
 from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clowder_info, \
-     build_dataset_hierarchy_crawl, file_exists, upload_to_dataset, check_file_in_dataset
+     build_dataset_hierarchy_crawl, file_exists, upload_to_dataset, check_file_in_dataset, \
+     timestamp_to_terraref
 from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
-from terrautils.imagefile import file_is_image_type, image_get_geobounds, polygon_to_tuples
+from terrautils.imagefile import file_is_image_type, image_get_geobounds, polygon_to_tuples, \
+     polygon_to_tuples_transform, get_epsg
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
@@ -28,7 +31,7 @@ if 'ua-mac' in STATIONS:
     if 'clipbyshape' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['clipbyshape'] = {'display': 'Shapefile Plot Clipper',
                                              'template': '{base}/{station}/Level_2_Plots/' + \
-                                                         '{sensor}/{date}/{plot}/{filename}'
+                                                    '{sensor}/{date}/{timestamp}/{plot}/{filename}'
                                             }
 
 def find_all_plot_names(plot_name, column_names):
@@ -83,7 +86,6 @@ def get_plot_name(name_idx, data):
 
     return plot_name
 
-
 # The class for clipping images by shape
 class ClipByShape(TerrarefExtractor):
     """Extractor for clipping georeferenced images to plot boundaries via a shape file
@@ -108,13 +110,7 @@ class ClipByShape(TerrarefExtractor):
                                  '(default=' + identify_binary + ')')
 
         # parse command line and load default logging configuration
-        self.setup(sensor=self.sensor_name)
-
-    @property
-    def sensor_name(self):
-        """The sensor associated with this extractor
-        """
-        return 'clipbyshape'
+        self.setup(sensor='clipbyshape')
 
     # List of file extensions we will probably see that we don't need to check for being
     # an image type
@@ -126,6 +122,7 @@ class ClipByShape(TerrarefExtractor):
         return ["dbf", "json", "prj", "shp", "shx", "txt"]
 
     # Look through the file list to find the files we need
+    # pylint: disable=too-many-locals,too-many-nested-blocks
     def find_shape_image_files(self, files, triggering_file):
         """Finds files that are needed for extracting plots from an orthomosaic
 
@@ -174,23 +171,34 @@ class ClipByShape(TerrarefExtractor):
                                           onefile + self.file_infodata_file_ending):
                         # If the file has a geo shape we store it for clipping
                         bounds = image_get_geobounds(onefile)
+                        epsg = get_epsg(onefile)
                         if bounds[0] != nan:
                             ring = ogr.Geometry(ogr.wkbLinearRing)
-                            ring.AddPoint(bounds[0], bounds[1])     # Upper left
-                            ring.AddPoint(bounds[2], bounds[1])     # Upper right
-                            ring.AddPoint(bounds[2], bounds[3])     # lower right
-                            ring.AddPoint(bounds[0], bounds[3])     # lower left
-                            ring.AddPoint(bounds[0], bounds[1])     # Closing the polygon
+                            ring.AddPoint(bounds[2], bounds[1])     # Upper left
+                            ring.AddPoint(bounds[3], bounds[1])     # Upper right
+                            ring.AddPoint(bounds[3], bounds[0])     # lower right
+                            ring.AddPoint(bounds[2], bounds[0])     # lower left
+                            ring.AddPoint(bounds[2], bounds[1])     # Closing the polygon
 
                             poly = ogr.Geometry(ogr.wkbPolygon)
                             poly.AddGeometry(ring)
 
+                            ref_sys = osr.SpatialReference()
+                            if ref_sys.ImportFromEPSG(int(epsg)) != ogr.OGRERR_NONE:
+                                logging.error("Failed to import EPSG %s for image file %s",
+                                              str(epsg), onefile)
+                            else:
+                                poly.AssignSpatialReference(ref_sys)
+
+                            #self_sys = osr.SpatialReference()
+                            #self_sys.ImportFromEPSG(self.default_epsg)
+
+                            #poly.TransformTo(self_sys)
+
                             bounds_tuple = polygon_to_tuples(poly)
 
                             # pylint: disable=line-too-long
-                            imagefiles[onefile] = {'bounds' : poly,
-                                                   'bounding_tuples' : bounds_tuple
-                                                  }
+                            imagefiles[onefile] = {'bounds' : poly}
                             # pylint: enable=line-too-long
 
         # Return what we've found
@@ -272,10 +280,12 @@ class ClipByShape(TerrarefExtractor):
             return
 
         # Change the base path of files to include the user by tweaking the sensor's value
-        _, new_base = self.get_username_with_base_path(host, secret_key, resource['id'],
-                                                       self.sensors.base)
-        sensor_old_base = self.sensors.base
-        self.sensors.base = new_base
+        sensor_old_base = None
+        if self.get_terraref_metadata is None:
+            _, new_base = self.get_username_with_base_path(host, secret_key, resource['id'],
+                                                           self.sensors.base)
+            sensor_old_base = self.sensors.base
+            self.sensors.base = new_base
 
         try:
             # Build up a list of image IDs
@@ -288,8 +298,9 @@ class ClipByShape(TerrarefExtractor):
                                                             (image_name == res_file['filename']):
                             image_ids[image_name] = res_file['id']
 
-            # Find pipeline JSON and essential fields
+            # Get timestamps. Also get season and experiment information for Clowder collections
             datestamp = self.find_datestamp(dataset_name)
+            timestamp = timestamp_to_terraref(self.find_timestamp(dataset_name))
             (season_name, experiment_name, _) = self.get_season_and_experiment(datestamp,
                                                                                self.sensor_name)
 
@@ -310,6 +321,7 @@ class ClipByShape(TerrarefExtractor):
             shape_in = ogr.Open(shapefile)
             layer = shape_in.GetLayer(os.path.split(os.path.splitext(shapefile)[0])[1])
             feature = layer.GetNextFeature()
+            layer_ref = layer.GetSpatialRef()
 
             if dbffile:
                 shape_table = DBF(dbffile, lowernames=True, ignore_missing_memofile=True)
@@ -351,6 +363,9 @@ class ClipByShape(TerrarefExtractor):
 
                 # Current geometry to extract
                 plot_poly = feature.GetGeometryRef()
+                if layer_ref:
+                    plot_poly.AssignSpatialReference(layer_ref)
+                plot_spatial_ref = plot_poly.GetSpatialReference()
 
                 # Determie the plot name to use
                 plot_name = None
@@ -365,8 +380,7 @@ class ClipByShape(TerrarefExtractor):
                     plot_name = "plot_" + str(alternate_plot_id)
 
                 # Determine output dataset name
-                leaf_dataset = plot_display_name + ' - ' + plot_name + " - " + \
-                                                                        datestamp.split("__")[0]
+                leaf_dataset = plot_display_name + ' - ' + plot_name + " - " + datestamp
                 self.log_info(resource, "Hierarchy: %s / %s / %s / %s / %s / %s / %s" %
                               (season_name, experiment_name, plot_display_name,
                                datestamp[:4], datestamp[5:7], datestamp[8:10], leaf_dataset))
@@ -388,9 +402,24 @@ class ClipByShape(TerrarefExtractor):
                 # Loop through all the images looking for overlap
                 for filename in imagefiles:
 
-                    # Checking for geographic overlap and skip if there is none
+                    # Get the bounds. We also get the reference systems in case we need to convert
+                    # between them
                     bounds = imagefiles[filename]['bounds']
-                    intersection = plot_poly.Intersection(bounds)
+                    bounds_spatial_ref = bounds.GetSpatialReference()
+
+                    # Checking for geographic overlap and skip if there is none
+                    if not bounds_spatial_ref.IsSame(plot_spatial_ref):
+                        # We need to convert coordinate system before an intersection
+                        transform = osr.CoordinateTransformation(bounds_spatial_ref,
+                                                                 plot_spatial_ref)
+                        new_bounds = bounds.Clone()
+                        if new_bounds:
+                            new_bounds.Transform(transform)
+                            intersection = plot_poly.Intersection(new_bounds)
+                            new_bounds = None
+                    else:
+                        # Same coordinate system. Simple intersection
+                        intersection = plot_poly.Intersection(bounds)
 
                     if intersection.GetArea() == 0.0:
                         self.log_info(resource, "Skipping image: "+filename)
@@ -398,7 +427,7 @@ class ClipByShape(TerrarefExtractor):
 
                     # Determine where we're putting the clipped file on disk and determine overwrite
                     # pylint: disable=unexpected-keyword-arg
-                    out_file = self.sensors.create_sensor_path(datestamp,
+                    out_file = self.sensors.create_sensor_path(timestamp,
                                                                filename=os.path.basename(filename),
                                                                plot=plot_name,
                                                                subsensor=self.sensor_name)
@@ -415,7 +444,7 @@ class ClipByShape(TerrarefExtractor):
                         os.makedirs(os.path.dirname(out_file))
 
                     # Clip the raster
-                    bounds_tuple = polygon_to_tuples(plot_poly)
+                    bounds_tuple = polygon_to_tuples_transform(plot_poly, bounds_spatial_ref)
 
                     clip_pix = clip_raster(filename, bounds_tuple, out_path=out_file)
                     if clip_pix is None:
@@ -469,7 +498,9 @@ class ClipByShape(TerrarefExtractor):
         finally:
             # Signal end of processing message and restore changed variables. Be sure to restore
             # changed variables above with early returns
-            self.sensors.base = sensor_old_base
+            if not sensor_old_base is None:
+                self.sensors.base = sensor_old_base
+
             self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
             self.end_message(resource)
 
