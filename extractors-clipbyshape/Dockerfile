@@ -17,8 +17,7 @@ RUN pip install --upgrade pip
 RUN pip install -U numpy && \
     pip install -U dbfread && \
     pip install gdal  && \
-    pip install --upgrade --ignore-installed enum34 terrautils && \
-    pip install -U pipelineutils
+    pip install --upgrade --ignore-installed enum34 terrautils
 
 # command to run when starting docker
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
