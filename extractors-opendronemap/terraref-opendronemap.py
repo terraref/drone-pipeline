@@ -290,7 +290,8 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
         # Start of message processing
         self.start_message(resource)
-        TerrarefExtractor.process_message(self, connector, host, secret_key, resource, parameters)
+        super(ODMFullFieldStitcher, self).process_message(self, connector, host, secret_key,
+                                                          resource, parameters)
 
         # Handle any parameters
         if isinstance(parameters, basestring):
