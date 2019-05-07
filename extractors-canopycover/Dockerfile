@@ -10,14 +10,16 @@ RUN chown -R extractor /home/extractor \
     && chgrp -R extractor /home/extractor 
 
 # install and upgrade packages
+RUN apt install -y imagemagick gdal-bin libgdal-dev
+
+# install and upgrade packages
 RUN pip install --upgrade pip 
 
 RUN pip install --upgrade numpy && \
     pip install --upgrade dbfread && \
     pip install gdal  && \
     pip install --upgrade --ignore-installed enum34 terrautils && \
-    pip install --upgrade terraref-stereo-rgb && \
-    pip install --upgrade pipelineutils
+    pip install --upgrade terraref-stereo-rgb
 
 # command to run when starting docker
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
