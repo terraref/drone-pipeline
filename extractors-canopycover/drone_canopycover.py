@@ -356,7 +356,7 @@ class CanopyCover(TerrarefExtractor):
             parameters(json): json object of the triggering message contents
         """
         self.start_message(resource)
-        TerrarefExtractor.process_message(self, connector, host, secret_key, resource, parameters)
+        super(CanopyCover, self).process_message(self, connector, host, secret_key, resource, parameters)
 
         # Handle any parameters
         if isinstance(parameters, basestring):
