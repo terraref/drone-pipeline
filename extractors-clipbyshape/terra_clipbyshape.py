@@ -190,13 +190,6 @@ class ClipByShape(TerrarefExtractor):
                             else:
                                 poly.AssignSpatialReference(ref_sys)
 
-                            #self_sys = osr.SpatialReference()
-                            #self_sys.ImportFromEPSG(self.default_epsg)
-
-                            #poly.TransformTo(self_sys)
-
-                            bounds_tuple = polygon_to_tuples(poly)
-
                             # pylint: disable=line-too-long
                             imagefiles[onefile] = {'bounds' : poly}
                             # pylint: enable=line-too-long
@@ -234,7 +227,8 @@ class ClipByShape(TerrarefExtractor):
             parameters(json): json object of the triggering message contents
         """
         self.start_message(resource)
-        TerrarefExtractor.process_message(self, connector, host, secret_key, resource, parameters)
+        super(ClipByShape, self).process_message(self, connector, host, secret_key, resource,
+                                                 parameters)
 
         # Handle any parameters
         if isinstance(parameters, basestring):
