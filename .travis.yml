@@ -1,0 +1,138 @@
+# Superuser for docker commands and such
+sudo: required
+
+# python environment and python version
+language: python
+python: 
+  - "3.6"
+cache: pip
+
+# What sources to auto build
+branches:
+  only:
+  - master
+  - develop
+  # - "/^v\\d+\\.\\d+(\\.\\d+)?(-\\S*)?$/"
+
+# We're using docker
+services:
+  - docker
+
+# Only deploy the container after the master branch has built
+stages:
+  - name: after_script
+    # require the branch name to be master (note for PRs this is the base branch name)
+    if: branch = master
+
+# Secure stuff: travis encrypt --com '<var>=<value>'
+#     DockerHub credentials
+env:
+  global:
+  - secure: "R8Ngn7lFa2itiwZa/Rp4K2sqFsLv2iAyDoOZjmE92fHgqSLYvi4cKXjSOzPIf/CInQhLDkFSKbgTUK72eEfoRhMezIkX/qJG1MUDYT6XhyNlz3XF3mdSmtxEVzgZ1uIsUS1mGqEYvU+sIGxFETO0H/xR6SzAE4EX2B8AE2x4kKa+BnIayT2SaRI36N0TZ2pET4C4Qy4krBvihV2NmixF6rzjwJ6F3jKq50O0S/dhI8+seFInqstJB5FToQkT4/LnNOnqc+pClv0HdL3ZowMOqWiostV0j97Jm71n9zFAJl4GAthE4ZhAGfmohMb3J/g17rtikNFOxAIjTBSWGJg1oSWIg8vD222AVSPjzv9Wa8CX/LauZXRbZ4CshI0Tfz1U14UfUwxGdsiP2zcYMU/hBkcV4coiedtip9UPg9z55dluO9DLolmu2jFoWa9FUhvhbAr4TjveLngaT3SN+N0MzkeHG+ITHM4KyyfFK/jDcsFLTsbeMpZbioh74AhLswsKrAxVAjeAZXynG4+OMTdoFNpIGkMJ7u46lj+xw2TsVRcEX4HBLuExL78xRfL25ZCbNLqZsn2iQ5BbKKsFtMWeDogyq06uGv0GwNjtt303dM18QSIncIsUDrGG4G07S0v0twu+a2tThNtPmFw4GqmmNDOIe68SiuMYYIxWuI+ahGA="
+  - secure: "nSSkp37NCAvwlj1WUKIqm8alH+yPsNA6efbGAYO1weclSr+ZK/QWoSp3oMEM0QvWHska5X4Xosdn3G8rRbSzaD/ZkFnkOVpyfWjJlPZbgKRZn07N0koRnq2sNp3HKYlc+2lOd8iIkFq52AcJQOhdVo0DsFlPwrFPj50zUCyML9vObvJa4WSzA7esTD4xArUpbajkYYJvTPViM/JlY8h5I0//lm1oauIj6c+w7vfTTEEpXoohp0QBgs6F54WjyQG/Pn5ARedDv1+F7FXutaFvcaHvMgHB44ft87QP0mGDcdjMYnAgzfgvSVykqzzXgR0a7qyUfHBeVvUbSxT0aRG8pgynvHKrfO12nyv6VyTPUAyv4PYPt0wcsZfyDYQgRvz7fH8+ZDK2XnyTdF32xSTbMmTepAIhrdBbvoecBuogBUOG/yjuUYF1CR7xxWU6q5vYSNh33U1zIM/3skcdeh+tiqbCP6TguBPbPE9jYqI0O9EVl9XE9btuVaN0VS1ELBJW22wW8rDRqQIt+onWwLSf1iS2HyU+Qj3TL3rIz3/i8oxPrLAMwpswGxI4bvXYz27LVfr6DDF8w5s0+tDmC0uzS3L7ZmhlokoVOUWFu5u4ETg69eEA/UXiVppnZArZ9Efg3uiobuFZIbaGXjCNn1EmX5GWu6eddaHgYmiwRXwoyQM="
+  # Remove next 3 lines when we have Box enabled
+  - secure: "glzkTxM/RF/MNX+hBKnpRlsb2QCfT6H8qBAZGuw9iPAQVSR6U6YHmvRyY32WhLWvhP7G3Wl3Yv/Q5X2HZWYT30J10AXFbPesDgDhwo1/WGkDoinDExC3PVgpwKV4Qb1gxWalb8tFC2lVS1LhkDlaBFIRsQU8rxLGu5700d5EdR6taXy8aQ08Ttgg0WDCuxazs0l0hAcpYqUmynCcSmTrzItrL2NIdp6JOoDn7+tCU2HuNfmoXwFUGInbqtrEL0s7aIp4dOONjCQER2VB1bfx2rAK/dpkywNsHP28qSmMOSX7Fgrvc3RrhCWmXlotRipOEwbZJ++6GUj1iqH9JXhx96J3EKpyIM4amDLthE78xcPkYfBYtX+6Dn6Vj3ONu5RQuG/6rMN0hSps7qTHx3PdOOk269jaZQI8vjlhuhoZCiMCnBx8O/h5gpk2w1So1+yivF1J1cWvosvv9MHlFeR0zCPkndw/eimPh6Em+GDzu/+5m3Hgxkx+tlTMBo5HKQoRaIDlPZwkjONCQ+0ntaG+0rtepYJTXBFEliA1zBajuAYHnGwqtKW/N9U2iA+MwXwBMW0SLD1rNqDVPRsf3SfcLTRrdQMxmxoHHfsXxLY/ST1Umzu+eHUGU8DGuJdkCJVafCBmr+Qrg5eqfIJMIE/iizO1peLqV4iF+XJUPwtP5Qc="
+  - secure: "Pmz+XzLvUDQJzJqMSHuydikR/HLkXs31eVoNhukdLwGjEB8PuIGdBpgtl8xK+W4oGeu9QaU8/0r+XPGY1SwT9hlqwXbM3Uz57aCs6/cbFIbfIx4oQhw9VZxAne3cl3Th4qWoexNp5icwRxrVxzWTRsghMn5xfSWiOLrA+146R/deeQZkHHLfmt8MgjkxxwrvX97TlJ0fhs4Ibl+o5ziqhcza9LFBSRRrcckv+5i8najI56H4YmP0tezOm640luM9/yuB/bG0iGOOqAtRdibNITVqwF+GYmIVcVfSuuQQl6NYSDefGRs13EcSBH1tJyjPs6o9AbOU+emAzPKWuOM+J/BmQ9CRDdWNtkEvwRsxUmKymy7dJ2mWX5ckeTdsJol598019B1S6E5q7vsdYFSyw24mblZtLu3QyLgrqTu8dAAhwgLWck82vKuSQNN1YcZqldh8vcBPoT5xN8c7nZTmYQ9FOighvXV0A/Bbw11v1WGesxjEEppSPsPGk9qtrfQ6hHNqCCwbP3B7ICKhh+a06rw8y+g7m5RGsSp/MaMTimNw/qqwt3S3crS6fkP8iIkCkxk+QCc0U8F+aNhSlmjsY2x4VN7rwDVuOdIhV7fZSEF/y6Oo75o+SZzzS+WBCE+q7SV/y6SryxAZ9l/zrJTDQMNdjKkveMn9JJdSkYg/mS8="
+  - secure: "W9QXZjVBNfkI/8WsQ/I+rJPNXUl+FoClcUzF5YHICbkYq1gjgjPjIHYNJ6ks7MkGlT8D6AeYbbsmJ8oMu4ib8frzeRmFNybe4mDSd2+Y2oaM7vHJl96GUdke0D4zTaJ/j26wZyDvTQ+BnAs+wl5vizBbRN6SnGm7ynqmQkOGfqO7Fe9tdPTuNmsH1l/j4E/O0eo7hb1j+PJiX5DfdUmAV/LyycqjP7sncPdPBzkgbSmn0TlHcLLi2H+9WgGcEjmlIpAZ/KwX/maG6uQNiHls7GYGnF6GSJM3DWUKEyYDLSdtbtasM8la8u9fvCoitHntnabBkWXqfKDS6hw8N1fsPY/h74MwR0diA1Lmx7Py+Q22LcweXpNQk+XhofJhyswcoAArRuJxFczJUdFNy8J0jWaQKXYoQgNqkqfAm8fp7RSr6Rsqqxh0vdEgs+aWwnws7+UjuOSvlApcVdTNIm/xqzuQat37G5s5Qsi9IVEOcPylBIhvLkOad+DkSfliRUwjtEmMh4adbg+PTAxbH+uyPwjW+LPxHCxcERgOibcWpDf/45BTl32Hkn5rSN+BRN8zYARZGgg7zC6fj4HgOz+RySVrNvLrQ/fC8erQgdH1O67ThPE1ziekTzgv7bn4Xevk0x6Nb0DaZdVWF5pPYD7MHPSFdW4b3gjvch9s0XM13TU="
+  # End of temporary work around
+  - DOCKER_NAMED_CONTAINER=test_extractor   # Used to name the container for easier finding
+
+# Basic setup for the build. Install software needed by all extractors followed by optional installs for specific extractors
+before_install:
+  - export BRANCH=$(if [ "$TRAVIS_PULL_REQUEST" == "false" ]; then echo $TRAVIS_BRANCH; else echo $TRAVIS_PULL_REQUEST_BRANCH; fi)
+  - ./test/check_branch_acceptable.sh "$BRANCH" 
+  - echo "Display basic environment"
+  - docker --version
+  - ls -l
+  - echo "Attempting to update to docker-compose version:$DOCKER_COMPOSE_VERSION"
+  - sudo rm -f /usr/local/bin/docker-compose   # Update docker-compose
+  - curl -L https://github.com/docker/compose/releases/download/$DOCKER_COMPOSE_VERSION/docker-compose-`uname -s`-`uname -m` > docker-compose
+  - chmod +x docker-compose
+  - ls -l docker-compose
+  - sudo mv docker-compose /usr/local/bin
+  - docker-compose --version
+  # Install common packages
+  - echo "Installing packages"
+  - pip install -U pyclowder
+  - pip install -U boxsdk
+  # Extractor specific installations
+  - sudo apt install -y libjpeg-dev
+  - sudo apt install -y libtiff-dev
+  - pip install -U opencv-python
+  - pip install -U numpy
+  # Remove next 2 lines when we have Box enabled
+  - pip install pysftp
+  - ./test/download_archives.py
+
+# Start up the test bed containers and copy files from other locations as needed
+install:
+  - echo "Starting up environment with docker-compose"
+  - docker-compose -p clowder -f test/docker-compose.yml up -d
+  - docker ps -a
+  - docker inspect clowder_clowder_1
+  - ./test/wait_for_clowder.sh
+  # Setup the clowder account
+  - echo "Starting Clowder configuration"
+  - echo "Clowder URL:$CLOWDER_HOST_URI"
+  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/signup?email=test%40example.com"
+  - ./test/wait_for_registration.sh
+  - URI=`sed -r 's/.*href="(.+)">.*/\1/' reg.txt`
+  - echo "URI:$URI"
+  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$URI?firstName=test&lastName=test&password.password1=testPassword&password.password2=testPassword&agreementAcknowledged=true"
+  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/authenticate/userpass?username=test%40example.com&password=testPassword" -D headers.txt
+  - USER_ID=`grep 'Set-Cookie:\ id' headers.txt | sed -r 's/Set-(.+);.*;.*/\1/'`
+  - echo "USER ID:$USER_ID"
+  - export API_KEY=`curl -X POST -v -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/api/users/keys?name=testingkey" -H "$USER_ID" | sed -r 's/.*"key":"(.+)".*/\1/'`
+  - echo "API KEY:$API_KEY"
+  # Pull down the testing files
+  #- ./test/fetch_box_archives.py "$TEST_COMPARE_ARCHIVE" "$TEST_SOURCE_ARCHIVE"
+
+# Setup the clowder environment
+before_script:
+  - echo "Setting up Clowder spaces and datasets"
+  - export SPACE_ID=`curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d '{"name":"test_space","description":"Test results"}' "$CLOWDER_HOST_URI/api/spaces?key=$API_KEY" | sed -r 's/.*id\"\:\"(.+)\".*/\1/'`
+  - echo "SPACE_ID:$SPACE_ID"
+  - export DATASET_ID=`curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d "{\"name\":\"$TEST_DATASET_NAME\"}" "$CLOWDER_HOST_URI/api/datasets/createempty?key=$API_KEY" | sed -r 's/.*id\"\:\"(.+)\".*/\1/'`
+  - echo "DATASET ID:$DATASET_ID"
+  - echo "Building and running the extractor to test"
+  - docker build -t chrisatua/extractors:test ./
+  - docker run --network clowder_clowder -e 'RABBITMQ_URI=amqp://rabbitmq/%2F' -e 'RABBITMQ_EXCHANGE=terra' -d --name=test_extractor $CONTAINER_NAME
+  - export EXTRACTOR_NAME=`cat extractor_info.json | grep '\"name\"' | sed -r 's/\"name\"\:.*\"(.+)\",/\1/' | tr -d '[:space:]'`
+  - echo "$EXTRACTOR_NAME"
+  - echo "Loading the data for the extractor test"
+  - ./test/extract.sh "$TEST_SOURCE_ARCHIVE"  # Uncompress the test files
+  - ls -l ./data
+  - ./test/update_yaml.sh "./data/experiment.yaml" "$SPACE_ID" "test@example.com" "testPassword"
+  - cat ./data/experiment.yaml
+  - ./test/upload_data.py                     # Put the files into clowder
+  - echo "Registering the extractor and waiting for it to start"
+  - ./test/register_extractor.py ./extractor_info.json
+  - ./test/wait_for_started.py "$CONTAINER_NAME"
+
+# Start the extraction process and get a result
+script:
+  - echo "Starting the extractors work"
+  - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_bindings
+  - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_queues
+  #- curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d \'{"extractor":"$EXTRACTOR_NAME"}\' "$CLOWDER_HOST_URI/api/datasets/$DATASET_ID/extractions?key=$API_KEY"
+  - ./test/start_extract.py "$EXTRACTOR_NAME" "$CLOWDER_HOST_URI/api/datasets/$DATASET_ID/extractions?key=$API_KEY"
+  - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_queues
+  - echo "Waiting for extractor to finish and setting up for test result validation"
+  - ./test/wait_for_finish.py "$CONTAINER_NAME"
+  - ./test/extract_results.py  "$TEST_DATASET_NAME"      # get the results
+  - ./test/setup_comparables.sh "$TEST_COMPARE_ARCHIVE"  # setup any comparables
+  - echo "Running the validation of extractor produced data"
+  - ls -la
+  - ls -la ./datasets
+  - ls -la "./datasets/$TEST_DATASET_NAME"
+  - ls -la ./compare
+  - ./test/validate_results.py      # verify the results
+
+#$after_success:
+
+after_script:
+  - echo "Deploying container after successful run"
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+  - docker push chrisatua/extractors:test
+
+
