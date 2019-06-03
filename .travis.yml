@@ -129,7 +129,6 @@ script:
   - echo "Starting the extractors work"
   - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_bindings
   - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_queues
-  #- curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d \'{"extractor":"$EXTRACTOR_NAME"}\' "$CLOWDER_HOST_URI/api/datasets/$DATASET_ID/extractions?key=$API_KEY"
   - ./test/start_extract.py "$EXTRACTOR_NAME" "$CLOWDER_HOST_URI/api/datasets/$DATASET_ID/extractions?key=$API_KEY"
   - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_queues
   - echo "Waiting for extractor to finish and setting up for test result validation"
