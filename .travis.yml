@@ -1,0 +1,30 @@
+
+# python environment and python version
+language: python
+python: 
+  - "3.6"
+cache: pip
+
+# What sources to auto build
+branches:
+  only:
+  - master
+  - develop
+  - "/.*travis.*/" # indicates a Travis Ci test
+  # - "/^\\d+\\.\\d+(\\.\\d+)?(-\\S*)?$/" # tagged branches
+
+# We're using docker
+services:
+  - docker
+
+# Secure stuff: travis encrypt --com '<var>=<value>'
+#     DockerHub credentials
+env:
+  global:
+  - secure: "R8Ngn7lFa2itiwZa/Rp4K2sqFsLv2iAyDoOZjmE92fHgqSLYvi4cKXjSOzPIf/CInQhLDkFSKbgTUK72eEfoRhMezIkX/qJG1MUDYT6XhyNlz3XF3mdSmtxEVzgZ1uIsUS1mGqEYvU+sIGxFETO0H/xR6SzAE4EX2B8AE2x4kKa+BnIayT2SaRI36N0TZ2pET4C4Qy4krBvihV2NmixF6rzjwJ6F3jKq50O0S/dhI8+seFInqstJB5FToQkT4/LnNOnqc+pClv0HdL3ZowMOqWiostV0j97Jm71n9zFAJl4GAthE4ZhAGfmohMb3J/g17rtikNFOxAIjTBSWGJg1oSWIg8vD222AVSPjzv9Wa8CX/LauZXRbZ4CshI0Tfz1U14UfUwxGdsiP2zcYMU/hBkcV4coiedtip9UPg9z55dluO9DLolmu2jFoWa9FUhvhbAr4TjveLngaT3SN+N0MzkeHG+ITHM4KyyfFK/jDcsFLTsbeMpZbioh74AhLswsKrAxVAjeAZXynG4+OMTdoFNpIGkMJ7u46lj+xw2TsVRcEX4HBLuExL78xRfL25ZCbNLqZsn2iQ5BbKKsFtMWeDogyq06uGv0GwNjtt303dM18QSIncIsUDrGG4G07S0v0twu+a2tThNtPmFw4GqmmNDOIe68SiuMYYIxWuI+ahGA="
+  - secure: "nSSkp37NCAvwlj1WUKIqm8alH+yPsNA6efbGAYO1weclSr+ZK/QWoSp3oMEM0QvWHska5X4Xosdn3G8rRbSzaD/ZkFnkOVpyfWjJlPZbgKRZn07N0koRnq2sNp3HKYlc+2lOd8iIkFq52AcJQOhdVo0DsFlPwrFPj50zUCyML9vObvJa4WSzA7esTD4xArUpbajkYYJvTPViM/JlY8h5I0//lm1oauIj6c+w7vfTTEEpXoohp0QBgs6F54WjyQG/Pn5ARedDv1+F7FXutaFvcaHvMgHB44ft87QP0mGDcdjMYnAgzfgvSVykqzzXgR0a7qyUfHBeVvUbSxT0aRG8pgynvHKrfO12nyv6VyTPUAyv4PYPt0wcsZfyDYQgRvz7fH8+ZDK2XnyTdF32xSTbMmTepAIhrdBbvoecBuogBUOG/yjuUYF1CR7xxWU6q5vYSNh33U1zIM/3skcdeh+tiqbCP6TguBPbPE9jYqI0O9EVl9XE9btuVaN0VS1ELBJW22wW8rDRqQIt+onWwLSf1iS2HyU+Qj3TL3rIz3/i8oxPrLAMwpswGxI4bvXYz27LVfr6DDF8w5s0+tDmC0uzS3L7ZmhlokoVOUWFu5u4ETg69eEA/UXiVppnZArZ9Efg3uiobuFZIbaGXjCNn1EmX5GWu6eddaHgYmiwRXwoyQM="
+  - DOCKER_NAMED_CONTAINER=test_extractor   # Used to name the container for easier finding
+
+# Start the extraction process and get a result
+script:
+  - echo "Fill in the work to do"
