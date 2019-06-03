@@ -12,7 +12,8 @@ branches:
   only:
   - master
   - develop
-  # - "/^v\\d+\\.\\d+(\\.\\d+)?(-\\S*)?$/" # tagged branches
+  - "/.*travis.*/" # indicates a Travis Ci test
+  # - "/^\\d+\\.\\d+(\\.\\d+)?(-\\S*)?$/" # tagged branches
 
 # We're using docker
 services:
@@ -32,19 +33,19 @@ matrix:
       env: TEST_SOURCE_ARCHIVE=odm_test_data.tar
       env: TEST_COMPARE_ARCHIVE=odm_results.tar
       env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:opendronemap
-      if: branch = master OR branch = develop OR branch =~ /.*opendronemap.*/ OR branch =~ /.*odm.*/
-    - name: "Clip By Shape Extractor"
-      env: EXTRACTOR_BRANCH=clipbyshape
-      env: TEST_SOURCE_ARCHIVE=clipbyshape_test_data.tar
-      env: TEST_COMPARE_ARCHIVE=clipbyshape_results.tar
-      env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:clipbyshape
-      if: branch = master OR branch = develop OR branch =~ /.*clipbyshape.*/
-    - name: "Canopy Cover Value Extractor"
-      env: EXTRACTOR_BRANCH=canopycover
-      env: TEST_SOURCE_ARCHIVE=canopycover_test_data.tar
-      env: TEST_COMPARE_ARCHIVE=canopycover_results.tar
-      env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:canopycover
-      if: branch = master OR branch = develop OR branch =~ /.*canopycover.*/
+      if: branch = master OR branch = develop OR branch =~ /.*opendronemap.*/ OR branch =~ /.*odm.*/ OR branch =~ /.*travis.*/
+    #- name: "Clip By Shape Extractor"
+    #  env: EXTRACTOR_BRANCH=clipbyshape
+    #  env: TEST_SOURCE_ARCHIVE=clipbyshape_test_data.tar
+    #  env: TEST_COMPARE_ARCHIVE=clipbyshape_results.tar
+    #  env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:clipbyshape
+    #  if: branch = master OR branch = develop OR branch =~ /.*clipbyshape.*/ OR branch =~ /.*travis.*/
+    #- name: "Canopy Cover Value Extractor"
+    #  env: EXTRACTOR_BRANCH=canopycover
+    #  env: TEST_SOURCE_ARCHIVE=canopycover_test_data.tar
+    #  env: TEST_COMPARE_ARCHIVE=canopycover_results.tar
+    #  env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:canopycover
+    #  if: branch = master OR branch = develop OR branch =~ /.*canopycover.*/ OR branch =~ /.*travis.*/
 
 # Secure stuff: travis encrypt --com '<var>=<value>'
 #     DockerHub credentials
