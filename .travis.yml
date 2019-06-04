@@ -114,7 +114,7 @@ before_script:
   - export EXTRACTOR_NAME=`cat $BUILD_FOLDER/extractor_info.json | grep '\"name\"' | sed -r 's/\"name\"\:.*\"(.+)\",/\1/' | tr -d '[:space:]'`
   - echo "Found extractor name of:\ $EXTRACTOR_NAME"
   - echo "Loading the data for the extractor test"
-  - ./test/extract.sh "test\$TEST_SOURCE_ARCHIVE"  # Uncompress the test files
+  - ./test/extract.sh "test/$TEST_SOURCE_ARCHIVE"  # Uncompress the test files
   - ls -l ./data
   - ./test/update_yaml.sh "./data/experiment.yaml" "$SPACE_ID" "test@example.com" "testPassword"
   - cat ./data/experiment.yaml
