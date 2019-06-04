@@ -29,10 +29,7 @@ stages:
 matrix:
   include:
     - name: "OpenDroneMap Extractor"
-      env: EXTRACTOR_BRANCH=opendronemap
-      env: TEST_SOURCE_ARCHIVE=odm_test_data.tar
-      env: TEST_COMPARE_ARCHIVE=odm_results.tar
-      env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:opendronemap
+      env: EXTRACTOR_BRANCH=opendronemap TEST_SOURCE_ARCHIVE=odm_test_data.tar TEST_COMPARE_ARCHIVE=odm_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:opendronemap
       if: branch = master OR branch = develop OR branch =~ /.*opendronemap.*/ OR branch =~ /.*odm.*/ OR branch =~ /.*travis.*/
     #- name: "Clip By Shape Extractor"
     #  env: EXTRACTOR_BRANCH=clipbyshape
