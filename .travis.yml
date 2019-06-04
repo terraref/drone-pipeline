@@ -54,9 +54,10 @@ env:
 
 # Basic setup for the build. Install software needed by all extractors followed by optional installs for specific extractors
 before_install:
-  - echo "Working with job $EXTRACTOR_BRANCH"
+  - echo "Working with job:\ $EXTRACTOR_BRANCH"
   - echo "Checking branch name against folder structure"
   - export BRANCH=$(if [ "$TRAVIS_PULL_REQUEST" == "false" ]; then echo $TRAVIS_BRANCH; else echo $TRAVIS_PULL_REQUEST_BRANCH; fi)
+  - echo "Travis branch name is:\ $BRANCH"
   - BUILD_FOLDER=`./test/check_branch_acceptable.sh "$BRANCH" "$EXTRACTOR_BRANCH"`
   - echo "Verified build folder is ${BUILD_FOLDER} for branch ${BRANCH}"
   - echo "Displaying basic environment information"

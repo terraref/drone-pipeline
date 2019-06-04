@@ -26,6 +26,13 @@ elif [[ "${LOWER_BRANCH_NAME}" = 'develop' ]]; then
         exit 2
     fi
     CUR_BRANCH="${NEW_BRANCH}"
+elif [[ "${LOWER_BRANCH_NAME}" = *'travis'* ]]; then
+    NEW_BRANCH=$2
+    if [[ -z "${NEW_BRANCH}" ]]; then
+        echo "Invalid alternate branch name specified for ${CUR_BRANCH}. Unable to continue"
+        exit 2
+    fi
+    CUR_BRANCH="${NEW_BRANCH}"
 fi
 
 # Check if we need to change to another folder
