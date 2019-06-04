@@ -4,7 +4,7 @@ We are using Continuous Integration (CI) methodologies coupled with a master/dev
 
 ## Overview
 
-The CI tool we are using is (TravisCI)[https://travis-ci.com].
+The CI tool we are using is [TravisCI](https://travis-ci.com).
 Aside from the `.travis.yml` file needed at the root of this resository, this folder contains all the supporting files needed.
 This folder will not contain large data files used by the Travis CI builds/jobs or any other build-related files needed to build an extractor from the command line.
 
@@ -48,6 +48,7 @@ The required environmental variables are as follows. Other extractor-specific en
 * TEST_SOURCE_ARCHIVE - the name of the .tar archive containing input files to the extractor test
 * TEST_COMPARE_ARCHIVE - the name of the .tar archive contining comparison files used to test the extractor's results
 * EXTRACTOR_MASTER_DOCKERHUB_NAME - the tag used when pushing a successfully built and tested extractor to DockerHub. Only used when referencing the *master* branch
+
 The test condition is used to determine if an extractor job should be started.
 This allows a more inclusive overall build environment to be specified while only running extractor jobs as needed.
 For example, the build may exclude any branches that are for testing while the test conditions in the matrix only run an extractor's jobs when an appropriate branch is pushed.
@@ -88,7 +89,7 @@ Extractor specific scripts can perform actions such as downloading and installin
 
 As part of a build, extractors are built and run.
 The extractors need data to process, and after running, their results need to be tested.
-This data is provided to the build through (TAR)[https://linux.die.net/man/1/tar] archive files.
+This data is provided to the build through [TAR](https://linux.die.net/man/1/tar) archive files.
 Two environment variables (TEST_SOURCE_ARCHIVE and TEST_COMPARE_ARCHIVE), as described above, are used to identify these archives for each extractor.
 The source archive expects a flat layout of the files to use as input to testing the extractor.
 The compare archive can have a flat layout, or contain folders.
