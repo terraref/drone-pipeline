@@ -1,6 +1,7 @@
 .pylintrc
 .egg-info
 .Rhistory
+.ipynb_checkpoints
 build
 dist
 
