@@ -24,9 +24,10 @@ setup(name='pipelineutils',
       },
 
       install_requires=[
-          'pyclowder>=2,<3',
-          'terrautils>=1',
-          'requests'
+          'requests',
+          'tempfile',
+          'json',
+          'shutil'
       ],
       zip_safe=False,
 
