@@ -1,0 +1,10 @@
+Package: pipelineutils
+Title: Drone processing pipeline utilities for Argiculture
+Version: 0.0.0.1
+Authors@R: person("Christophe", "Schnaufer", email = "schnaufer@email.arizona.edi", role = c("aut", "cre"))
+Description: This package provides convienience functions for programmatically accessing the drone processing pipeline
+Depends: R (>= 3.5.1)
+License: BSD 3-Clause License
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 6.1.1
