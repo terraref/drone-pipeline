@@ -13,7 +13,6 @@ import requests
 YAML_INDENT = "    "
 YAML_INDENT2 = YAML_INDENT + YAML_INDENT
 
-# pylint: disable=invalid-name
 class __local__():
     """Class instance wrapping local functions
     """
@@ -181,7 +180,7 @@ class __local__():
             logging.error("Exception information follows")
             logging.error(str(ex))
             return None
-        except Exception as ex:    # pylint: disable=broad-except
+        except Exception as ex:
             logging.warning("An exception was caught while retrieving the ID for space " \
                             "\"%s\" and is being ignored",
                             space_name)
@@ -206,7 +205,7 @@ class __local__():
                 logging.error("Exception information follows")
                 logging.error(str(ex))
                 return None
-            except Exception as ex:    # pylint: disable=broad-except
+            except Exception as ex:
                 logging.warning("An exception was caught while creating the space " \
                                 "\"%s\" and is being ignored",
                                 space_name)
@@ -404,7 +403,7 @@ class __local__():
 
         return result.ok
 
-def prepare_experiment(studyName: str, season: str, timestamp: str) -> dict:
+def prepare_experiment(study_name: str, season: str, timestamp: str) -> dict:
     """Returns a dictionary with the correct experiment configuration
     Args:
         studyName(string): the name of the study
@@ -416,7 +415,7 @@ def prepare_experiment(studyName: str, season: str, timestamp: str) -> dict:
         No checks are made on the values passed in to ensure they conform
     """
     return {
-        "studyName": studyName,
+        "studyName": study_name,
         "season": season,
         "observationTimestamp": timestamp
     }
@@ -444,7 +443,6 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
     Notes:
         Information is logged when a problem occurs
     """
-    #pylint: disable=too-many-locals,too-many-arguments,too-many-return-statements
 
     space_id = None
     clowder_api = clowder_url + "/api"
@@ -508,8 +506,8 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
         if not request_id:
             logging.warning("The extractor \"%d\" wasn't started", extractor_name)
             return False
-
-    except Exception as ex:    # pylint: disable=broad-except
+    
+    except Exception as ex:
         logging.error("An exception was caught while attempting to schedule extractor \"%s\"",
                       extractor_name)
         logging.error("Exception information follows")
