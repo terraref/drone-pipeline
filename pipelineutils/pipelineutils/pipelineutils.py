@@ -87,8 +87,7 @@ class __local__():
         """
 
         # Look up the dataset
-        url = "%s/api/datasets?key=%s&title=%s&exact=true" % \
-                            (clowder_api_url, api_key, str(dataset_name))
+        url = "%s/api/datasets?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(dataset_name))
         result = requests.get(url)
         result.raise_for_status()
 
@@ -156,8 +155,7 @@ class __local__():
         return None
 
     @staticmethod
-    def prepare_space(clowder_api_url: str, api_key: str, space_name: str,
-                      space_must_exist: bool) -> str:
+    def prepare_space(clowder_api_url: str, api_key: str, space_name: str, space_must_exist: bool) -> str:
         """Prepares the Clowder space for the extractor according to the user's wishes
         Args:
             clowder_api_url(string): the URL to the Clowder instance's API to call
@@ -181,8 +179,7 @@ class __local__():
             logging.error(str(ex))
             return None
         except Exception as ex:
-            logging.warning("An exception was caught while retrieving the ID for space " \
-                            "\"%s\" and is being ignored",
+            logging.warning("An exception was caught while retrieving the ID for space \"%s\" and is being ignored",
                             space_name)
             logging.warning("Exception information follows")
             logging.warning(str(ex))
@@ -206,22 +203,19 @@ class __local__():
                 logging.error(str(ex))
                 return None
             except Exception as ex:
-                logging.warning("An exception was caught while creating the space " \
-                                "\"%s\" and is being ignored",
+                logging.warning("An exception was caught while creating the space \"%s\" and is being ignored",
                                 space_name)
                 logging.warning("Exception information follows")
                 logging.warning(str(ex))
             finally:
                 if space_id is None:
-                    logging.error("Unable to determine if space \"%s\" creation was a " \
-                                  "success or not", space_name)
+                    logging.error("Unable to determine if space \"%s\" creation was a success or not", space_name)
                     return None  # pylint: disable=lost-exception
 
         return space_id
 
     @staticmethod
-    def checked_remove_file(clowder_api_url: str, api_key: str, dataset_id: str,
-                            filename: str) -> bool:
+    def checked_remove_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str) -> bool:
         """Checks for a file in a dataset and deletes it if found
         Args:
             clowder_api_url(string): the URL to the Clowder instance's API to call
@@ -281,8 +275,7 @@ class __local__():
         return False
 
     @staticmethod
-    def upload_as_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str,
-                       configuration: str) -> str:
+    def upload_as_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str, configuration: str) -> str:
         """Uploads a string as a file
         Args:
             clowder_api_url(string): the URL to the Clowder instance's API to call
@@ -307,8 +300,7 @@ class __local__():
             out_file.write(str(configuration))
 
         # Upload the temporary file to the dataset
-        url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % \
-                                            (clowder_api_url, dataset_id, api_key)
+        url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
         try:
             result = requests.post(url, files={"File": open(tmp_filepath, 'rb')})
         finally:
@@ -323,14 +315,12 @@ class __local__():
             if 'id' in result.json():
                 return result.json()['id']
 
-        logging.warning("Unable to determine if upload of file \"%s\" with " \
-                        "string configuration was successful",
+        logging.warning("Unable to determine if upload of file \"%s\" with string configuration was successful",
                         filename)
         return None
 
     @staticmethod
-    def upload_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str,
-                    config_file: str) -> str:
+    def upload_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str, config_file: str) -> str:
         """Uploads a string as a file
         Args:
             clowder_api_url(string): the URL to the Clowder instance's API to call
@@ -358,8 +348,7 @@ class __local__():
             shutil.copy(config_file, our_filename)
 
         # Upload the temporary file to the dataset
-        url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % \
-                                        (clowder_api_url, dataset_id, api_key)
+        url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
         try:
             result = requests.post(url, files={"File": open(our_filename, 'rb')})
         finally:
@@ -375,13 +364,12 @@ class __local__():
             if 'id' in result.json():
                 return result.json()['id']
 
-        logging.warning("Unable to determine if upload of file \"%s\" from configuration " \
-                        "file \"%s\" was successful", filename, config_file)
+        logging.warning("Unable to determine if upload of file \"%s\" from configuration file \"%s\" was successful",
+                        filename, config_file)
         return None
 
     @staticmethod
-    def start_extractor(clowder_api_url: str, api_key: str, dataset_id: str,
-                        extractor_name: str) -> bool:
+    def start_extractor(clowder_api_url: str, api_key: str, dataset_id: str, extractor_name: str) -> bool:
         """Starts the extractor for the indicated dataset
         Args:
             clowder_api_url(string): the URL to the Clowder instance's API to call
