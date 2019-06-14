@@ -41,7 +41,7 @@ setup(name='pipelineutils',
         'Topic :: Utilities',
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.7',
       ],
       keywords=['terraref', 'clowder', 'field crop', 'phenomics', 'computer vision', 'remote sensing', 'drone', 'pipeline']
 )
