@@ -21,6 +21,117 @@ class __local__():
         """
 
     @staticmethod
+    def get(url: str, args=None, result_key: str = None, result_index: int = None):
+        """Makes a GET request
+        Args:
+            url(string): the url to call
+            args: arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the GET call
+        """
+        request = lambda: __local__.make_call("GET", url, args, result_key, result_index)
+        return request()
+
+    @staticmethod
+    def post(url: str, args=None, result_key: str = None, result_index: int = None):
+        """Makes a POST request
+        Args:
+            url(string): the url to call
+            args: arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the POST call
+        """
+        request = lambda: __local__.make_call("POST", url, args, result_key, result_index)
+        return request()
+
+    @staticmethod
+    def delete(url: str, args=None, result_key: str = None, result_index: int = None):
+        """Makes a DELETE request
+        Args:
+            url(string): the url to call
+            args: arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the DELETE call
+        """
+        request = lambda: __local__.make_call("DELETE", url, args, result_key, result_index)
+        return request()
+
+    @staticmethod
+    def make_call(method: str, url: str, args=None, result_key: str = None, result_index: int = None):
+        """Makes a generic HTTP request
+        Args:
+            method(string): the method to use when making the call
+            url(string): the url to call
+            args: arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the method requested
+        """
+        if not args is None:
+            result = requests.request(method, url, *args)
+        else:
+            result = requests.request(method, url)
+        result.raise_for_status()
+
+        result_json = result.json()
+        json_len = len(result_json)
+        if json_len > 0:
+            if not result_key is None:
+                if not result_index is None:
+                    try:
+                        _ = iter(result_json)
+                        return result_json[result_index][result_key]
+                    except Exception:
+                        pass
+                return result_json[result_key]
+            return result_json
+
+        return None
+
+    @staticmethod
     def get_api_key(clowder_url: str, username: str, password: str) -> str:
         """Returns an API key for the specified user
         Args:
@@ -30,19 +141,17 @@ class __local__():
         Return:
             A found API key or None if one isn't found
         """
-
         # Get a key
         url = "%s/api/users/keys" % (clowder_url)
-        result = requests.get(url, headers={"Accept": "application/json"},
-                              auth=(username, password))
-        result.raise_for_status()
+        get_args = {"headers":{"Accept": "application/json"},
+                    "auth": (username, password)
+                   }
 
-        json_len = len(result.json())
-        if json_len > 0:
-            return result.json()[0]['key']
+        result_key = __local__.get(url, get_args, result_key="key", result_index=0)
+        if result_key is None:
+            logging.warning("Unable to find an API key for user %s", username)
 
-        logging.warning("Unable to find an API key for user %s", username)
-        return None
+        return result_key
 
     @staticmethod
     def find_extractor_name(clowder_api_url: str, api_key: str, extractor_name: str) -> str:
@@ -60,12 +169,11 @@ class __local__():
             The first match found is the one that's returned
         """
         url = "%s/extractors?key=%s" % (clowder_api_url, api_key)
-        result = requests.get(url, headers={"Accept": "application/json"})
-        result.raise_for_status()
+        get_args = {"headers": {"Accept": "application/json"}}
 
-        json_len = len(result.json())
-        if json_len > 0:
-            for ex in result.json():
+        result_json = __local__.get(url, get_args)
+        if not result_json is None:
+            for ex in result_json:
                 if 'name' in ex and extractor_name in ex['name']:
                     return ex['name']
 
@@ -88,16 +196,12 @@ class __local__():
 
         # Look up the dataset
         url = "%s/api/datasets?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(dataset_name))
-        result = requests.get(url)
-        result.raise_for_status()
 
-        # Try to find the ID
-        json_len = len(result.json())
-        if json_len > 0:
-            return result.json()[0]['id']
+        result_id = __local__.get(url, result_key='id', result_index=0)
+        if result_id is None:
+            logging.warning("Unable to find the ID for the dataset \"%s\"", dataset_name)
 
-        logging.warning("Unable to find the ID for the dataset \"%s\"", dataset_name)
-        return None
+        return result_id
 
     @staticmethod
     def get_space_id(clowder_api_url: str, api_key: str, space_name: str) -> str:
@@ -115,16 +219,12 @@ class __local__():
 
         # Make the call to get the ID
         url = "%s/spaces?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(space_name))
-        result = requests.get(url)
-        result.raise_for_status()
 
-        # Find the ID from a successful call and return it, or return not found value
-        json_len = len(result.json())
-        if json_len > 0:
-            return result.json()[0]['id']
-
-        logging.warning("Unable to find the ID for the space \"%s\"", space_name)
-        return None
+        result_id = __local__.get(url)
+        if result_id is None:
+            logging.warning("Unable to find the ID for the space \"%s\"", space_name)
+            
+        return result_id
 
     @staticmethod
     def create_space(clowder_api_url: str, api_key: str, space_name: str) -> str:
@@ -142,17 +242,15 @@ class __local__():
 
         # Make the call to create the space
         url = "%s/spaces?key=%s" % (clowder_api_url, api_key)
-        result = requests.post(url, headers={"Content-Type": "application/json"},
-                               data=json.dumps({"name": space_name}))
-        result.raise_for_status()
+        post_args = {"headers": {"Content-Type": "application/json"},
+                     "data": json.dumps({"name": space_name})
+                    }
+        
+        result_id = __local__.post(url, post_args, result_key='id', result_index=0)
+        if result_id is None:
+            logging.warning("Unable to determine if space \"%s\" was created", space_name)
 
-        # Find the ID from a successful call and return it, or return not found value
-        json_len = len(result.json())
-        if json_len > 0:
-            return result.json()[0]['id']
-
-        logging.warning("Unable to determine if space \"%s\" was created", space_name)
-        return None
+        return result_id
 
     @staticmethod
     def prepare_space(clowder_api_url: str, api_key: str, space_name: str, space_must_exist: bool) -> str:
@@ -232,13 +330,11 @@ class __local__():
 
         # Try to find the file
         url = "%s/api/datasets/%s/files?key=%s" % (clowder_api_url, dataset_id, api_key)
-        result = requests.get(url)
-        result.raise_for_status()
 
+        result_json = __local__.get(url)
         # Try to find the ID
-        json_len = len(result.json())
-        if json_len > 0:
-            for one_file in result.json():
+        if not result_json is None:
+            for one_file in result_json:
                 if 'filename' in one_file and one_file['filename'] == filename:
                     return __local__.remove_file_by_id(clowder_api_url, api_key, one_file['id'])
 
@@ -261,18 +357,12 @@ class __local__():
             exception is raised if the returned JSON is invalid.
         """
         url = "%s/files/%s?key=%s" % (clowder_api_url, file_id, api_key)
-        result = requests.delete(url)
-        result.raise_for_status()
 
-        # Try to determine success
-        json_len = len(result.json())
-        if json_len > 0:
-            if 'status' in result.json():
-                if result.json()['status'] == "success":
-                    return True
+        result_status = __local__.delete(url, result_key='status')
+        if result_status is None:
+            logging.warning("Unable to determine if file %s was deleted", file_id)
 
-        logging.warning("Unable to determine if file %s was deleted", file_id)
-        return False
+        return not result_status is None
 
     @staticmethod
     def upload_as_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str, configuration: str) -> str:
@@ -293,31 +383,19 @@ class __local__():
             residing in the dataset
         """
 
-        # Create a temporary folder and save the file to it
-        tmp_folder = tempfile.mkdtemp()
-        tmp_filepath = os.path.join(tmp_folder, filename)
-        with open(tmp_filepath, "w+") as out_file:
-            out_file.write(str(configuration))
-
         # Upload the temporary file to the dataset
+        result_id = None
         url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
-        try:
-            result = requests.post(url, files={"File": open(tmp_filepath, 'rb')})
-        finally:
-            # Clean up the temporary file and folder
-            shutil.rmtree(tmp_folder)
+        post_args = {"files": {"File": (filename, configuration)}
+                    }
 
-        # Check the result and return the ID
-        result.raise_for_status()
+        result_id = __local__.post(url, post_args, result_key='id')
 
-        json_len = len(result.json())
-        if json_len > 0:
-            if 'id' in result.json():
-                return result.json()['id']
+        if result_id is None:
+            logging.warning("Unable to determine if upload of file \"%s\" with string configuration was successful",
+                            filename)
 
-        logging.warning("Unable to determine if upload of file \"%s\" with string configuration was successful",
-                        filename)
-        return None
+        return result_id
 
     @staticmethod
     def upload_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str, config_file: str) -> str:
@@ -339,6 +417,7 @@ class __local__():
         """
         tmp_folder = None
         our_filename = config_file
+        do_cleanup = lambda folder: shutil.rmtree(folder) if not folder is None else None
 
         # Determine our file to upload by making sure it's named correctly
         base_filename = os.path.basename(our_filename)
@@ -347,26 +426,21 @@ class __local__():
             our_filename = os.path.join(tmp_folder, filename)
             shutil.copy(config_file, our_filename)
 
-        # Upload the temporary file to the dataset
+        # Upload the file to the dataset
+        result_id = None
         url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
+        post_args = {"files": {"File": open(our_filename, 'rb')}}
         try:
-            result = requests.post(url, files={"File": open(our_filename, 'rb')})
+            result_id = __local__.post(url, post_args, result_key='id')
         finally:
-            # Clean up the temporary file and folder
-            if not tmp_folder is None:
-                shutil.rmtree(tmp_folder)
+            # Clean up any temporary files and folders
+            do_cleanup(tmp_folder)
 
-        # Check the result and return the ID
-        result.raise_for_status()
+        if result_id is None:
+            logging.warning("Unable to determine if upload of file \"%s\" as configuration file \"%s\" was successful",
+                            filename, config_file)
 
-        json_len = len(result.json())
-        if json_len > 0:
-            if 'id' in result.json():
-                return result.json()['id']
-
-        logging.warning("Unable to determine if upload of file \"%s\" from configuration file \"%s\" was successful",
-                        filename, config_file)
-        return None
+        return result_id
 
     @staticmethod
     def start_extractor(clowder_api_url: str, api_key: str, dataset_id: str, extractor_name: str) -> bool:
