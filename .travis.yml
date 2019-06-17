@@ -110,8 +110,8 @@ before_script:
   - export DATASET_ID=`curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d "{\"name\":\"$TEST_DATASET_NAME\"}" "$CLOWDER_HOST_URI/api/datasets/createempty?key=$API_KEY" | sed -r 's/.*id\"\:\"(.+)\".*/\1/'`
   - echo "DATASET ID:\ $DATASET_ID"
   - echo "Building and running the extractor to test using Dockerfile in folder $BUILD_FOLDER"
-  - docker build -t chrisatua/extractors:test "./$BUILD_FOLDER"
-  - docker run --network clowder_clowder -e 'RABBITMQ_URI=amqp://rabbitmq/%2F' -e 'RABBITMQ_EXCHANGE=terra' -d --name=test_extractor $CONTAINER_NAME
+  - docker build -t $CONTAINER_NAME "./$BUILD_FOLDER"
+  - docker run --network clowder_clowder -e 'RABBITMQ_URI=amqp://rabbitmq/%2F' -e 'RABBITMQ_EXCHANGE=terra' -d "--name=$DOCKER_NAMED_CONTAINER" "$CONTAINER_NAME"
   - export EXTRACTOR_NAME=`cat $BUILD_FOLDER/extractor_info.json | grep '\"name\"' | sed -r 's/\"name\"\:.*\"(.+)\",/\1/' | tr -d '[:space:]'`
   - echo "Found extractor name of:\ $EXTRACTOR_NAME"
   - echo "Loading the data for the extractor test"
