@@ -15,9 +15,10 @@ This extractor uses the Clowder OpenDroneMap extractor as its starting point.
 
 _Input_
 
-  - A file named 'extractors-opendronemap.txt'
+  - A file named 'extractors-opendronemap.txt'. Refer to the OpenDroneMap extractor in the Clowder project for a [template file](https://opensource.ncsa.illinois.edu/bitbucket/projects/CATS/repos/extractors-opendronemap/browse/extractors-opendronemap.txt.sample?at=refs%2Fheads%2Fupdate_odm_extractor)
   - All the JPEG images from a drone flight 
-  - (optionally) A ground control points file
+  - (optional) A ground control points file
+  - (optional) A [configuration file](https://osf.io/xdkcy/wiki/Configuration%20JSON/) is **strongly** recommended. Not using a custom configuration file will most likely lead to undesireable results.
 
 _Output_
 
