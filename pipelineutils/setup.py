@@ -24,10 +24,7 @@ setup(name='pipelineutils',
       },
 
       install_requires=[
-          'requests',
-          'tempfile',
-          'json',
-          'shutil'
+          'requests'
       ],
       zip_safe=False,
 
