@@ -21,11 +21,11 @@ class __local__():
         """
 
     @staticmethod
-    def get(url: str, args=None, result_key: str = None, result_index: int = None):
+    def get(url: str, kwargs=None, result_key: str = None, result_index: int = None):
         """Makes a GET request
         Args:
             url(string): the url to call
-            args: arguments to pass to the call
+            kwargs: keyword arguments to pass to the call
             result_key(string): optional key to look up in the results
             result_index(int): optional index to return the result_key value from, for indexable results
         Return:
@@ -40,15 +40,15 @@ class __local__():
         Notes:
             No checks are made to the args parameter for validity to the GET call
         """
-        request = lambda: __local__.make_call("GET", url, args, result_key, result_index)
+        request = lambda: __local__.make_call("GET", url, kwargs, result_key, result_index)
         return request()
 
     @staticmethod
-    def post(url: str, args=None, result_key: str = None, result_index: int = None):
+    def post(url: str, kwargs=None, result_key: str = None, result_index: int = None):
         """Makes a POST request
         Args:
             url(string): the url to call
-            args: arguments to pass to the call
+            kwargs: arguments to pass to the call
             result_key(string): optional key to look up in the results
             result_index(int): optional index to return the result_key value from, for indexable results
         Return:
@@ -63,15 +63,15 @@ class __local__():
         Notes:
             No checks are made to the args parameter for validity to the POST call
         """
-        request = lambda: __local__.make_call("POST", url, args, result_key, result_index)
+        request = lambda: __local__.make_call("POST", url, kwargs, result_key, result_index)
         return request()
 
     @staticmethod
-    def delete(url: str, args=None, result_key: str = None, result_index: int = None):
+    def delete(url: str, kwargs=None, result_key: str = None, result_index: int = None):
         """Makes a DELETE request
         Args:
             url(string): the url to call
-            args: arguments to pass to the call
+            kwargs: arguments to pass to the call
             result_key(string): optional key to look up in the results
             result_index(int): optional index to return the result_key value from, for indexable results
         Return:
@@ -86,16 +86,16 @@ class __local__():
         Notes:
             No checks are made to the args parameter for validity to the DELETE call
         """
-        request = lambda: __local__.make_call("DELETE", url, args, result_key, result_index)
+        request = lambda: __local__.make_call("DELETE", url, kwargs, result_key, result_index)
         return request()
 
     @staticmethod
-    def make_call(method: str, url: str, args=None, result_key: str = None, result_index: int = None):
+    def make_call(method: str, url: str, kwargs=None, result_key: str = None, result_index: int = None):
         """Makes a generic HTTP request
         Args:
             method(string): the method to use when making the call
             url(string): the url to call
-            args: arguments to pass to the call
+            kwargs: arguments to pass to the call
             result_key(string): optional key to look up in the results
             result_index(int): optional index to return the result_key value from, for indexable results
         Return:
@@ -110,9 +110,13 @@ class __local__():
         Notes:
             No checks are made to the args parameter for validity to the method requested
         """
-        if not args is None:
-            result = requests.request(method, url, *args)
+        logger = logging.getLogger(__name__)
+
+        if not kwargs is None:
+            logger.debug("Making %s request with args to \"%s\"", method, url)
+            result = requests.request(method, url, **kwargs)
         else:
+            logger.debug("Making %s request to \"%s\" with no args", method, url)
             result = requests.request(method, url)
         result.raise_for_status()
 
@@ -141,15 +145,19 @@ class __local__():
         Return:
             A found API key or None if one isn't found
         """
+        logger = logging.getLogger(__name__)
+
         # Get a key
         url = "%s/api/users/keys" % (clowder_url)
         get_args = {"headers":{"Accept": "application/json"},
                     "auth": (username, password)
                    }
 
+        logger.debug("get_api_key calling get: %s", url)
+        logger.debug("    %s", str(get_args))
         result_key = __local__.get(url, get_args, result_key="key", result_index=0)
         if result_key is None:
-            logging.warning("Unable to find an API key for user %s", username)
+            logger.warning("Unable to find an API key for user %s", username)
 
         return result_key
 
@@ -168,16 +176,21 @@ class __local__():
         Notes:
             The first match found is the one that's returned
         """
-        url = "%s/extractors?key=%s" % (clowder_api_url, api_key)
+        logger = logging.getLogger(__name__)
+
+        # Get all the registered extractors
+        url = "%s/api/extractors?key=%s" % (clowder_api_url, api_key)
         get_args = {"headers": {"Accept": "application/json"}}
 
+        logger.debug("find_extractor_name calling get: %s", url)
+        logger.debug("    %s", str(get_args))
         result_json = __local__.get(url, get_args)
         if not result_json is None:
             for ex in result_json:
                 if 'name' in ex and extractor_name in ex['name']:
                     return ex['name']
 
-        logging.warning("Unable to find an extractor matching \"%s\"", extractor_name)
+        logger.warning("Unable to find an extractor matching \"%s\"", extractor_name)
         return None
 
     @staticmethod
@@ -193,13 +206,15 @@ class __local__():
             Throws HTTPError if the API request was not successful. A ValueError
             exception is raised if the returned JSON is invalid.
         """
+        logger = logging.getLogger(__name__)
 
         # Look up the dataset
         url = "%s/api/datasets?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(dataset_name))
 
+        logger.debug("get_dataset_id calling get: %s", url)
         result_id = __local__.get(url, result_key='id', result_index=0)
         if result_id is None:
-            logging.warning("Unable to find the ID for the dataset \"%s\"", dataset_name)
+            logger.warning("Unable to find the ID for the dataset \"%s\"", dataset_name)
 
         return result_id
 
@@ -216,39 +231,45 @@ class __local__():
             Throws HTTPError if the API request was not successful. A ValueError
             exception is raised if the returned JSON is invalid.
         """
+        logger = logging.getLogger(__name__)
 
         # Make the call to get the ID
-        url = "%s/spaces?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(space_name))
+        url = "%s/api/spaces?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(space_name))
 
-        result_id = __local__.get(url)
+        logger.debug("get_space_id calling get: %s", url)
+        result_id = __local__.get(url, result_key='id', result_index=0)
         if result_id is None:
-            logging.warning("Unable to find the ID for the space \"%s\"", space_name)
+            logger.warning("Unable to find the ID for the space \"%s\"", space_name)
             
         return result_id
 
     @staticmethod
-    def create_space(clowder_api_url: str, api_key: str, space_name: str) -> str:
+    def create_space(clowder_api_url: str, api_key: str, space_name: str, description: str = "") -> str:
         """Creates the space in Clowder and returns its ID
         Args:
             clowder_api_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             space_name(string): the name of the space to create
+            description(string): optional parameter describing the space
         Return:
             Returns the ID if the space was created. None is returned otherwise
         Exceptions:
             Throws HTTPError if the API request was not successful. A ValueError
             exception is raised if the returned JSON is invalid.
         """
+        logger = logging.getLogger(__name__)
 
         # Make the call to create the space
-        url = "%s/spaces?key=%s" % (clowder_api_url, api_key)
+        url = "%s/api/spaces?key=%s" % (clowder_api_url, api_key)
         post_args = {"headers": {"Content-Type": "application/json"},
-                     "data": json.dumps({"name": space_name})
+                     "data": json.dumps({"name": space_name, "description": description})
                     }
         
+        logger.debug("create_space calling post: %s", url)
+        logger.debug("    %s", str(post_args))
         result_id = __local__.post(url, post_args, result_key='id', result_index=0)
         if result_id is None:
-            logging.warning("Unable to determine if space \"%s\" was created", space_name)
+            logger.warning("Unable to determine if space \"%s\" was created", space_name)
 
         return result_id
 
@@ -266,29 +287,30 @@ class __local__():
             Returns the space ID associated with the name or None if the conditions aren't as the
             user requested, or a problem ocurred
         """
+        logger = logging.getLogger(__name__)
 
         # First check if the space exists
         try:
             space_id = __local__.get_space_id(clowder_api_url, api_key, space_name)
         except requests.HTTPError as ex:
-            logging.error("Exception caught while trying to get the ID for space \"%s\"",
-                          space_name)
-            logging.error("Exception information follows")
-            logging.error(str(ex))
+            logger.error("Exception caught while trying to get the ID for space \"%s\"",
+                         space_name)
+            logger.error("Exception information follows")
+            logger.error(str(ex))
             return None
         except Exception as ex:
-            logging.warning("An exception was caught while retrieving the ID for space \"%s\" and is being ignored",
-                            space_name)
-            logging.warning("Exception information follows")
-            logging.warning(str(ex))
+            logger.warning("An exception was caught while retrieving the ID for space \"%s\" and is being ignored",
+                           space_name)
+            logger.warning("Exception information follows")
+            logger.warning(str(ex))
 
         # Here we check if the caller cares about the space name existing in Clowder
         if not space_must_exist is None:
             if space_must_exist == (space_id is None):
                 if space_must_exist:
-                    logging.warning("The space \"%s\" doesn't exist and it should", space_name)
+                    logger.warning("The space \"%s\" doesn't exist and it should", space_name)
                 else:
-                    logging.warning("The space \"%s\" exists when it should not", space_name)
+                    logger.warning("The space \"%s\" exists when it should not", space_name)
                 return None
 
         # We create the space if it doesn't exist already
@@ -296,18 +318,18 @@ class __local__():
             try:
                 space_id = __local__.create_space(clowder_api_url, api_key, space_name)
             except requests.HTTPError as ex:
-                logging.error("Exception caught while trying to create space \"%s\"", space_name)
-                logging.error("Exception information follows")
-                logging.error(str(ex))
+                logger.error("Exception caught while trying to create space \"%s\"", space_name)
+                logger.error("Exception information follows")
+                logger.error(str(ex))
                 return None
             except Exception as ex:
-                logging.warning("An exception was caught while creating the space \"%s\" and is being ignored",
-                                space_name)
-                logging.warning("Exception information follows")
-                logging.warning(str(ex))
+                logger.warning("An exception was caught while creating the space \"%s\" and is being ignored",
+                               space_name)
+                logger.warning("Exception information follows")
+                logger.warning(str(ex))
             finally:
                 if space_id is None:
-                    logging.error("Unable to determine if space \"%s\" creation was a success or not", space_name)
+                    logger.error("Unable to determine if space \"%s\" creation was a success or not", space_name)
                     return None  # pylint: disable=lost-exception
 
         return space_id
@@ -327,19 +349,18 @@ class __local__():
             Throws HTTPError if the API request was not successful. A ValueError
             exception is raised if the returned JSON is invalid.
         """
+        logger = logging.getLogger(__name__)
 
         # Try to find the file
         url = "%s/api/datasets/%s/files?key=%s" % (clowder_api_url, dataset_id, api_key)
 
+        logger.debug("checked_remove_file calling get: %s", url)
         result_json = __local__.get(url)
-        # Try to find the ID
+        # Try to find the filename
         if not result_json is None:
             for one_file in result_json:
                 if 'filename' in one_file and one_file['filename'] == filename:
                     return __local__.remove_file_by_id(clowder_api_url, api_key, one_file['id'])
-
-        logging.warning("Unable to determine if file \"%s\" was removed from dataset %s",
-                        filename, dataset_id)
         return False
 
     @staticmethod
@@ -356,11 +377,16 @@ class __local__():
             Throws HTTPError if the API request was not successful. A ValueError
             exception is raised if the returned JSON is invalid.
         """
-        url = "%s/files/%s?key=%s" % (clowder_api_url, file_id, api_key)
+        logger = logging.getLogger(__name__)
 
+        # Remove the file completely from the system including any Clowder spaces, dataset, or
+        # collections
+        url = "%s/api/files/%s?key=%s" % (clowder_api_url, file_id, api_key)
+
+        logger.debug("remove_file_by_id calling delete: %s", url)
         result_status = __local__.delete(url, result_key='status')
         if result_status is None:
-            logging.warning("Unable to determine if file %s was deleted", file_id)
+            logger.warning("Unable to determine if file %s was deleted", file_id)
 
         return not result_status is None
 
@@ -382,18 +408,21 @@ class __local__():
             A check is not made for an existing file. This may result in files with the same name
             residing in the dataset
         """
+        logger = logging.getLogger(__name__)
 
         # Upload the temporary file to the dataset
         result_id = None
-        url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
+        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
         post_args = {"files": {"File": (filename, configuration)}
                     }
 
+        logger.debug("upload_as_file calling post: %s", url)
+        logger.debug("    %s", str(post_args))
         result_id = __local__.post(url, post_args, result_key='id')
 
         if result_id is None:
-            logging.warning("Unable to determine if upload of file \"%s\" with string configuration was successful",
-                            filename)
+            logger.warning("Unable to determine if upload of file \"%s\" with string configuration was successful",
+                           filename)
 
         return result_id
 
@@ -415,6 +444,8 @@ class __local__():
             A check is not made for an existing file. This may result in files with the same name
             residing in the dataset
         """
+        logger = logging.getLogger(__name__)
+
         tmp_folder = None
         our_filename = config_file
         do_cleanup = lambda folder: shutil.rmtree(folder) if not folder is None else None
@@ -428,17 +459,22 @@ class __local__():
 
         # Upload the file to the dataset
         result_id = None
-        url = "%sapi/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
-        post_args = {"files": {"File": open(our_filename, 'rb')}}
+        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
+        config_fd = open(our_filename, 'rb')
+        post_args = {"files": {"File": config_fd}}
         try:
+            logger.debug("upload_file calling post: %s", url)
+            logger.debug("    %s", str(post_args))
             result_id = __local__.post(url, post_args, result_key='id')
         finally:
+            # Close our file
+            config_fd.close()
             # Clean up any temporary files and folders
             do_cleanup(tmp_folder)
 
         if result_id is None:
-            logging.warning("Unable to determine if upload of file \"%s\" as configuration file \"%s\" was successful",
-                            filename, config_file)
+            logger.warning("Unable to determine if upload of file \"%s\" as configuration file \"%s\" was successful",
+                           filename, config_file)
 
         return result_id
 
@@ -455,9 +491,16 @@ class __local__():
         Exceptions:
             Throws HTTPError if the API request was not successful.
         """
-        url = "%s/datasets/%s/extractions?key=%s" % (clowder_api_url, dataset_id, api_key)
+        logger = logging.getLogger(__name__)
+
+        # Start the extractor on the dataset
+        url = "%s/api/datasets/%s/extractions?key=%s" % (clowder_api_url, dataset_id, api_key)
         body_params = {'extractor': extractor_name}
         request_headers = {'Content-Type': 'application/json'}
+
+        logger.debug("start_extractor calling requests.post: %s", url)
+        logger.debug("    Headers: %s", str(request_headers))
+        logger.debug("    Data: %s", str(body_params))
         result = requests.post(url,
                                headers=request_headers,
                                data=json.dumps(body_params))
@@ -505,6 +548,7 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
     Notes:
         Information is logged when a problem occurs
     """
+    logger = logging.getLogger(__name__)
 
     space_id = None
     clowder_api = clowder_url + "/api"
@@ -566,14 +610,14 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
         # Make the call to start the extractor
         request_id = __local__.start_extractor(clowder_api, our_api_key, dataset_id, extractor_name)
         if not request_id:
-            logging.warning("The extractor \"%d\" wasn't started", extractor_name)
+            logger.warning("The extractor \"%d\" wasn't started", extractor_name)
             return False
     
     except Exception as ex:
-        logging.error("An exception was caught while attempting to schedule extractor \"%s\"",
-                      extractor_name)
-        logging.error("Exception information follows")
-        logging.error(str(ex))
+        logger.error("An exception was caught while attempting to schedule extractor \"%s\"",
+                     extractor_name)
+        logger.error("Exception information follows")
+        logger.error(str(ex))
         return False
 
     return True
