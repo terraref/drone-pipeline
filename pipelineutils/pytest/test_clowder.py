@@ -1,506 +1,622 @@
-"""Test cases for the Clowder interface
+"""Utility functions and classes for accessing the drone pipeline
 """
 
+import io
 import os
-import uuid
-import unittest
-import datetime
-import time
 import logging
+import tempfile
+import shutil
+import json
+import requests
 
-import pipelineutils.pipelineutils.pipelineutils as pu
+# Definitions
+YAML_INDENT = "    "
+YAML_INDENT2 = YAML_INDENT + YAML_INDENT
 
-# Define constants
-USERNAME = os.getenv("TEST_CLOWDER_USERNAME", "test@example.com")
-PASSWORD = os.getenv("TEST_CLOWDER_PASSWORD", "testPassword")
-CLOWDER_URI = os.getenv("CLOWDER_HOST_URI", "http://localhost:9000")
+class __local__():
+    """Class instance wrapping local functions
+    """
+    def __init__(self):
+        """Initialize class instance.
+        """
 
-FILE_WAIT_SLEEP_SECONDS = 5
-FILE_WAIT_TIMEOUT_SECONDS = 5 * 60
+    @staticmethod
+    def get(url: str, kwargs=None, result_key: str = None, result_index: int = None):
+        """Makes a GET request
+        Args:
+            url(string): the url to call
+            kwargs: keyword arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the GET call
+        """
+        request = lambda: __local__.make_call("GET", url, kwargs, result_key, result_index)
+        return request()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+    @staticmethod
+    def post(url: str, kwargs=None, result_key: str = None, result_index: int = None):
+        """Makes a POST request
+        Args:
+            url(string): the url to call
+            kwargs: arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the POST call
+        """
+        request = lambda: __local__.make_call("POST", url, kwargs, result_key, result_index)
+        return request()
 
-def _wait_for_file(api_key, ds_id, filename):
-    """Waits for the specified file to show up in the dataset
+    @staticmethod
+    def delete(url: str, kwargs=None, result_key: str = None, result_index: int = None):
+        """Makes a DELETE request
+        Args:
+            url(string): the url to call
+            kwargs: arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the DELETE call
+        """
+        request = lambda: __local__.make_call("DELETE", url, kwargs, result_key, result_index)
+        return request()
+
+    @staticmethod
+    def make_call(method: str, url: str, kwargs=None, result_key: str = None, result_index: int = None):
+        """Makes a generic HTTP request
+        Args:
+            method(string): the method to use when making the call
+            url(string): the url to call
+            kwargs: arguments to pass to the call
+            result_key(string): optional key to look up in the results
+            result_index(int): optional index to return the result_key value from, for indexable results
+        Return:
+            If no result_key or result_index is specified, the JSON returned from the call.
+            If only the result_key is specified, the value of that key in the JSON returned from the call.
+            If both result_key and result_index is specified, the JSON is indexed at the value specified in
+            result_index and the value associated with the result_key at that index is returned.
+            None is returned if the parsed JSON returned from the call has a length of zero.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            No checks are made to the args parameter for validity to the method requested
+        """
+        logger = logging.getLogger(__name__)
+
+        if not kwargs is None:
+            logger.debug("Making %s request with args to \"%s\"", method, url)
+            result = requests.request(method, url, **kwargs)
+        else:
+            logger.debug("Making %s request to \"%s\" with no args", method, url)
+            result = requests.request(method, url)
+        result.raise_for_status()
+
+        result_json = result.json()
+        json_len = len(result_json)
+        if json_len > 0:
+            if not result_key is None:
+                if not result_index is None:
+                    try:
+                        _ = iter(result_json)
+                        return result_json[result_index][result_key]
+                    except Exception:
+                        pass
+                return result_json[result_key]
+            return result_json
+
+        return None
+
+    @staticmethod
+    def get_api_key(clowder_url: str, username: str, password: str) -> str:
+        """Returns an API key for the specified user
+        Args:
+            clowder_url(string): the Clowder URL (make sure it's not the API url)
+            username(string): name of Clowder user
+            password(string): password associated with Clowder user
+        Return:
+            A found API key or None if one isn't found
+        """
+        logger = logging.getLogger(__name__)
+
+        # Get a key
+        url = "%s/api/users/keys" % (clowder_url)
+        get_args = {"headers":{"Accept": "application/json"},
+                    "auth": (username, password)
+                   }
+
+        logger.debug("get_api_key calling get: %s", url)
+        logger.debug("    %s", str(get_args))
+        result_key = __local__.get(url, get_args, result_key="key", result_index=0)
+        if result_key is None:
+            logger.warning("Unable to find an API key for user %s", username)
+
+        return result_key
+
+    @staticmethod
+    def find_extractor_name(clowder_url_url: str, api_key: str, extractor_name: str) -> str:
+        """Looks up the Clowder registered extractor associated with the extractor name
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            extractor_name(string): part of the extractor name to match
+        Return:
+            The name of the associated Clowder extractor or None if one isn't found.
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            The first match found is the one that's returned
+        """
+        logger = logging.getLogger(__name__)
+
+        # Get all the registered extractors
+        url = "%s/api/extractors?key=%s" % (clowder_url_url, api_key)
+        get_args = {"headers": {"Accept": "application/json"}}
+
+        logger.debug("find_extractor_name calling get: %s", url)
+        logger.debug("    %s", str(get_args))
+        result_json = __local__.get(url, get_args)
+        if not result_json is None:
+            for ex in result_json:
+                if 'name' in ex and extractor_name in ex['name']:
+                    return ex['name']
+
+        logger.warning("Unable to find an extractor matching \"%s\"", extractor_name)
+        return None
+
+    @staticmethod
+    def get_dataset_id(clowder_url_url: str, api_key: str, dataset_name: str) -> str:
+        """Retrieves the ID of a dataset by name
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            dataset_name(string): the name of the dataset to get the ID of
+        Return:
+            The ID of the dataset or None if the dataset is not found or there was a problem
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        """
+        logger = logging.getLogger(__name__)
+
+        # Look up the dataset
+        url = "%s/api/datasets?key=%s&title=%s&exact=true" % (clowder_url_url, api_key, str(dataset_name))
+
+        logger.debug("get_dataset_id calling get: %s", url)
+        result_id = __local__.get(url, result_key='id', result_index=0)
+        if result_id is None:
+            logger.warning("Unable to find the ID for the dataset \"%s\"", dataset_name)
+
+        return result_id
+
+    @staticmethod
+    def get_space_id(clowder_url_url: str, api_key: str, space_name: str) -> str:
+        """Looks up and returns the ID associated with the Clowder space named
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            space_name(string): the name of the space to fetch the ID of
+        Return:
+            Returns the ID if the space was found. None is returned otherwise
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        """
+        logger = logging.getLogger(__name__)
+
+        # Make the call to get the ID
+        url = "%s/api/spaces?key=%s&title=%s&exact=true" % (clowder_url_url, api_key, str(space_name))
+
+        logger.debug("get_space_id calling get: %s", url)
+        result_id = __local__.get(url, result_key='id', result_index=0)
+        if result_id is None:
+            logger.warning("Unable to find the ID for the space \"%s\"", space_name)
+            
+        return result_id
+
+    @staticmethod
+    def create_space(clowder_url_url: str, api_key: str, space_name: str, description: str = "") -> str:
+        """Creates the space in Clowder and returns its ID
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            space_name(string): the name of the space to create
+            description(string): optional parameter describing the space
+        Return:
+            Returns the ID if the space was created. None is returned otherwise
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        """
+        logger = logging.getLogger(__name__)
+
+        # Make the call to create the space
+        url = "%s/api/spaces?key=%s" % (clowder_url_url, api_key)
+        post_args = {"headers": {"Content-Type": "application/json"},
+                     "data": json.dumps({"name": space_name, "description": description})
+                    }
+        
+        logger.debug("create_space calling post: %s", url)
+        logger.debug("    %s", str(post_args))
+        result_id = __local__.post(url, post_args, result_key='id', result_index=0)
+        if result_id is None:
+            logger.warning("Unable to determine if space \"%s\" was created", space_name)
+
+        return result_id
+
+    @staticmethod
+    def prepare_space(clowder_url_url: str, api_key: str, space_name: str, space_must_exist: bool) -> str:
+        """Prepares the Clowder space for the extractor according to the user's wishes
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            space_name(string): the name of the space to create
+            space_must_exist(boolean): set to None to create the space name if it doesn't exist,
+                                       False if the name must not already exist, and True if the
+                                       space name must already exist
+        Return:
+            Returns the space ID associated with the name or None if the conditions aren't as the
+            user requested, or a problem ocurred
+        """
+        logger = logging.getLogger(__name__)
+
+        # First check if the space exists
+        try:
+            space_id = __local__.get_space_id(clowder_url_url, api_key, space_name)
+        except requests.HTTPError as ex:
+            logger.error("Exception caught while trying to get the ID for space \"%s\"",
+                         space_name)
+            logger.error("Exception information follows")
+            logger.error(str(ex))
+            return None
+        except Exception as ex:
+            logger.warning("An exception was caught while retrieving the ID for space \"%s\" and is being ignored",
+                           space_name)
+            logger.warning("Exception information follows")
+            logger.warning(str(ex))
+
+        # Here we check if the caller cares about the space name existing in Clowder
+        if not space_must_exist is None:
+            if space_must_exist == (space_id is None):
+                if space_must_exist:
+                    logger.warning("The space \"%s\" doesn't exist and it should", space_name)
+                else:
+                    logger.warning("The space \"%s\" exists when it should not", space_name)
+                return None
+
+        # We create the space if it doesn't exist already
+        if space_id is None:
+            try:
+                space_id = __local__.create_space(clowder_url_url, api_key, space_name)
+            except requests.HTTPError as ex:
+                logger.error("Exception caught while trying to create space \"%s\"", space_name)
+                logger.error("Exception information follows")
+                logger.error(str(ex))
+                return None
+            except Exception as ex:
+                logger.warning("An exception was caught while creating the space \"%s\" and is being ignored",
+                               space_name)
+                logger.warning("Exception information follows")
+                logger.warning(str(ex))
+            finally:
+                if space_id is None:
+                    logger.error("Unable to determine if space \"%s\" creation was a success or not", space_name)
+                    return None  # pylint: disable=lost-exception
+
+        return space_id
+
+    @staticmethod
+    def checked_remove_file(clowder_url_url: str, api_key: str, dataset_id: str, filename: str) -> bool:
+        """Checks for a file in a dataset and deletes it if found
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            dataset_id(string): the ID of the dataset to look in for the file
+            filename(string): the name of the file to find and remove
+        Return:
+            Returns True if the file was found and removed. False is returned
+            if the file wasn't found
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        """
+        logger = logging.getLogger(__name__)
+
+        # Try to find the file
+        url = "%s/api/datasets/%s/files?key=%s" % (clowder_url_url, dataset_id, api_key)
+
+        logger.debug("checked_remove_file calling get: %s", url)
+        result_json = __local__.get(url)
+        # Try to find the filename
+        if not result_json is None:
+            for one_file in result_json:
+                if 'filename' in one_file and one_file['filename'] == filename:
+                    return __local__.remove_file_by_id(clowder_url_url, api_key, one_file['id'])
+        return False
+
+    @staticmethod
+    def remove_file_by_id(clowder_url_url: str, api_key: str, file_id: str) -> bool:
+        """Deletes the file identified by its ID
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            dataset_id(string): the ID of the dataset to remove the file from
+            file_id(string): the ID of the file to remove
+        Return:
+            Returns True if the file was reported as removed. False is returned otherwise
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        """
+        logger = logging.getLogger(__name__)
+
+        # Remove the file completely from the system including any Clowder spaces, dataset, or
+        # collections
+        url = "%s/api/files/%s?key=%s" % (clowder_url_url, file_id, api_key)
+
+        logger.debug("remove_file_by_id calling delete: %s", url)
+        result_status = __local__.delete(url, result_key='status')
+        if result_status is None:
+            logger.warning("Unable to determine if file %s was deleted", file_id)
+
+        return not result_status is None
+
+    @staticmethod
+    def upload_as_file(clowder_url_url: str, api_key: str, dataset_id: str, filename: str, configuration: str) -> str:
+        """Uploads a string as a file
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            dataset_id(string): the ID of the dataset to create the file in
+            filename(string): the name of the file to create
+            configuration(string): the formatted configuration string for the file contents
+        Return:
+            The ID of the uploaded file or None if there was a problem
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            A check is not made for an existing file. This may result in files with the same name
+            residing in the dataset
+        """
+        logger = logging.getLogger(__name__)
+
+        # Upload the temporary file to the dataset
+        result_id = None
+        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_url_url, dataset_id, api_key)
+        post_args = {"files": {"File": (filename, configuration)}
+                    }
+
+        logger.debug("upload_as_file calling post: %s", url)
+        logger.debug("    %s", str(post_args))
+        result_id = __local__.post(url, post_args, result_key='id')
+
+        if result_id is None:
+            logger.warning("Unable to determine if upload of file \"%s\" with string configuration was successful",
+                           filename)
+
+        return result_id
+
+    @staticmethod
+    def upload_file(clowder_url_url: str, api_key: str, dataset_id: str, filename: str, config_file: str) -> str:
+        """Uploads a string as a file
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            dataset_id(string): the ID of the dataset to create the file in
+            filename(string): the name of the file to create
+            config_file(string): the path to the configuration file to load
+        Return:
+            The ID of the uploaded file or None if there was a problem
+        Exceptions:
+            Throws HTTPError if the API request was not successful. A ValueError
+            exception is raised if the returned JSON is invalid.
+        Notes:
+            A check is not made for an existing file. This may result in files with the same name
+            residing in the dataset
+        """
+        logger = logging.getLogger(__name__)
+
+        tmp_folder = None
+        our_filename = config_file
+        do_cleanup = lambda folder: shutil.rmtree(folder) if not folder is None else None
+
+        # Determine our file to upload by making sure it's named correctly
+        base_filename = os.path.basename(our_filename)
+        if base_filename != filename:
+            tmp_folder = tempfile.mkdtemp()
+            our_filename = os.path.join(tmp_folder, filename)
+            shutil.copy(config_file, our_filename)
+
+        # Upload the file to the dataset
+        result_id = None
+        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_url_url, dataset_id, api_key)
+        config_fd = open(our_filename, 'rb')
+        post_args = {"files": {"File": config_fd}}
+        try:
+            logger.debug("upload_file calling post: %s", url)
+            logger.debug("    %s", str(post_args))
+            result_id = __local__.post(url, post_args, result_key='id')
+        finally:
+            # Close our file
+            config_fd.close()
+            # Clean up any temporary files and folders
+            do_cleanup(tmp_folder)
+
+        if result_id is None:
+            logger.warning("Unable to determine if upload of file \"%s\" as configuration file \"%s\" was successful",
+                           filename, config_file)
+
+        return result_id
+
+    @staticmethod
+    def start_extractor(clowder_url_url: str, api_key: str, dataset_id: str, extractor_name: str) -> bool:
+        """Starts the extractor for the indicated dataset
+        Args:
+            clowder_url_url(string): the URL to the Clowder instance's API to call
+            api_key(string): the key to use when calling the API
+            dataset_id(string): the ID of the dataset to create the file in
+            extractor_name(string): the Clowder name of the extractor to run
+        Return:
+            Returns True if the request was successful and False if not
+        Exceptions:
+            Throws HTTPError if the API request was not successful.
+        """
+        logger = logging.getLogger(__name__)
+
+        # Start the extractor on the dataset
+        url = "%s/api/datasets/%s/extractions?key=%s" % (clowder_url_url, dataset_id, api_key)
+        body_params = {'extractor': extractor_name}
+        request_headers = {'Content-Type': 'application/json'}
+
+        logger.debug("start_extractor calling requests.post: %s", url)
+        logger.debug("    Headers: %s", str(request_headers))
+        logger.debug("    Data: %s", str(body_params))
+        result = requests.post(url,
+                               headers=request_headers,
+                               data=json.dumps(body_params))
+        result.raise_for_status()
+
+        return result.ok
+
+def prepare_experiment(study_name: str, season: str, timestamp: str) -> dict:
+    """Returns a dictionary with the correct experiment configuration
     Args:
-        api_key(str): the API key to use
-        ds_id(str): the dataset ID to look in
-        filename(str): the name of the file to look for
+        studyName(string): the name of the study
+        season(string): the season of the study
+        timestamp(string): ISO 8601 timestamp formatted as YYYY-MM-DDThh:mm:ssTZD
     Return:
-        True is returned if the file is found before timeout
+        A dictionary containing the experiment values
+    Notes:
+        No checks are made on the values passed in to ensure they conform
     """
-    file_found = False
-    start_ts = datetime.datetime.now()
-    cur_ts = start_ts
-    while (cur_ts - start_ts).total_seconds() < FILE_WAIT_TIMEOUT_SECONDS and not file_found:
-        url = "%s/api/datasets/%s/files?key=%s" % (CLOWDER_URI, ds_id, api_key)
+    return {
+        "studyName": study_name,
+        "season": season,
+        "observationTimestamp": timestamp
+    }
 
-        try:
-            result_json = pu.__local__.get(url)
-            # Try to find the filename
-            if not result_json is None:
-                for one_file in result_json:
-                    if 'filename' in one_file and one_file['filename'] == filename:
-                        file_found = True
-        except Exception as ex:
-            print("Exception was caught waiting for a file: " + str(ex))
-            print("    Continuing to wait for the file \"" + filename + "\"")
-
-        time.sleep(FILE_WAIT_SLEEP_SECONDS)
-
-    return file_found
-
-# pylint: disable=too-many-public-methods
-class ClowderTestCase(unittest.TestCase):
-    """Testing the clowder connections
+def start_extractor(clowder_url: str, experiment: dict, username: str, password: str, dataset: str,
+                    extractor: str, space_name: str, api_key: str = None,
+                    space_must_exist: bool = None, config_file: str = None) -> bool:
+    """Makes a request to start an extraction job
+    Args:
+        clowder_url(string): URL to Clowder instance to access
+        experiment(dict): dictionary of experiment definition values
+        username(string): name of Clowder user
+        password(string): password associated with Clowder user
+        dataset(string): name of the dataset to associate with the extractor request
+        extractor(string): string identifying extractor to run
+        space_name(string): name of space to use with extractor
+        api_key(string): API key to use when making Clowder API calls
+        space_must_exist(boolean): set to None to create the space name if it doesn't exist,
+                                   False if the name must not already exist, and True if the
+                                   space name must already exist
+        config_file(string): path to optional configuration file, or a string to use as
+                             configuration, or None for no configuration
+    Return:
+        True is returned if the request was made and False if there was a problem
+    Notes:
+        Information is logged when a problem occurs
     """
+    logger = logging.getLogger(__name__)
+
+    space_id = None
+    our_api_key = api_key
+
+    # We wrap everything in an try-except block
+    try:
+        # Get an API key if needed
+        if our_api_key is None:
+            our_api_key = __local__.get_api_key(clowder_url, username, password)
+
+        # Make sure the dataset exists
+        dataset_id = __local__.get_dataset_id(clowder_url, our_api_key, dataset)
+        if dataset_id is None:
+            return False
+
+        # Make sure we can find the extractor requested
+        extractor_name = __local__.find_extractor_name(clowder_url, our_api_key, extractor)
+        if not extractor_name:
+            return False
+
+        # Get the ID of the space that is named, based upon the specified condition of
+        # space_must_exist
+        space_id = __local__.prepare_space(clowder_url, our_api_key, space_name,
+                                           space_must_exist)
+        if not space_id:
+            return False
+
+        # Create an in-memory experiment.yaml file: https://osf.io/xdkcy/wiki/Configuration%20YAML/
+        experiment_file = io.StringIO()
+        experiment_file.write("%YAML 1.1\n---\npipeline:\n")
+        for key in experiment:
+            experiment_file.write(YAML_INDENT + key + ": " + experiment[key] + "\n")
+        experiment_file.write(YAML_INDENT + "clowder:" + "\n")
+        experiment_file.write(YAML_INDENT2 + "username: " + username + "\n")
+        experiment_file.write(YAML_INDENT2 + "password: " + password + "\n")
+        experiment_file.write(YAML_INDENT2 + "space: " + space_id + "\n")
+
+        # Replace/upload the experiment.yaml file
+        __local__.checked_remove_file(clowder_url, our_api_key, dataset_id, "experiment.yaml")
+        experiment_yaml = experiment_file.getvalue()
+        experiment_file.close()
+        experiment_file_id = __local__.upload_as_file(clowder_url, our_api_key, dataset_id,
+                                                      "experiment.yaml", experiment_yaml)
+        if not experiment_file_id:
+            return False
+
+        # Replace/upload the extractor-opendronemap.txt file
+        extractor_config_file = "extractor-%s.txt" % (extractor)
+        if config_file:
+            config_file_id = __local__.upload_file(clowder_url, our_api_key, dataset_id,
+                                                   extractor_config_file, config_file)
+        else:
+            config_file_id = __local__.upload_as_file(clowder_url, our_api_key, dataset_id,
+                                                      extractor_config_file, "")
+        if not config_file_id:
+            return False
+
+        # Make the call to start the extractor
+        request_id = __local__.start_extractor(clowder_url, our_api_key, dataset_id, extractor_name)
+        if not request_id:
+            logger.warning("The extractor \"%d\" wasn't started", extractor_name)
+            return False
     
-    def setup(self):    # pylint: disable=no-self-use
-        """Test preparation for every unit test
-        """
-        print("Accessing Clowder instance at: '" + CLOWDER_URI + "'")
-        print("Clowder credentials: '" + USERNAME + "/[hiddden]'")
-    
-    def teardown(self): # pylint: disable=no-self-use
-        """Test cleanup for every unit test
-        """
-        # Nothing to tear down
-        
-    def _get_test_api_key(self):
-        """Helper method for fetching an API key from Clowder
-        """
-        api_key = None
-        try:
-            api_key = pu.__local__.get_api_key(CLOWDER_URI, USERNAME, PASSWORD)
-        except Exception as ex:
-            print("Exception was caught getting API key: ", str(ex))
-        finally:
-            self.assertIsNotNone(api_key, "No api key was returned from clowder instance")
-        return api_key
-        
-    def test_get_api_key(self):
-        """Unit test for getting an API key from Clowder
-        """
-        api_key = None
-        try:
-            api_key = pu.__local__.get_api_key(CLOWDER_URI, USERNAME, PASSWORD)
-        except Exception as ex:
-            print("Exception was caught: ", str(ex))
-        finally:
-            self.assertIsNotNone(api_key, "No api key was returned from clowder instance")
-        print("test_get_api_key passed: " + api_key)
+    except Exception as ex:
+        logger.error("An exception was caught while attempting to schedule extractor \"%s\"",
+                     extractor_name)
+        logger.error("Exception information follows")
+        logger.error(str(ex))
+        return False
 
-    def test_find_extractor_name(self):
-        """Unit test for finding an extractor name in Clowder
-        """
-        test_name = os.getenv("TEST_EXTRACTOR_NAME")
-        self.assertIsNotNone(test_name, "Unable to find a configured environment variable of TEST_EXTRACTOR_NAME")
-
-        try:
-            ex_name = pu.__local__.find_extractor_name(CLOWDER_URI, self._get_test_api_key(), test_name)
-        except Exception as ex:
-            print("Exception was caught finding extractor name: ", str(ex))
-        finally:
-            self.assertIsNotNone(ex_name, "Extractor name '" + test_name + "' was not found")
-            
-        print("test_find_extractor_name for '" + test_name + "' passed: " + ex_name)
-
-    def test_failure_find_extractor_name(self):
-        """Unit test for finding an extractor name in Clowder
-        """
-        test_name = str(uuid.uuid4())
-        self.assertIsNotNone(test_name, "Unable to create extractor name for failure test")
-
-        try:
-            ex_name = pu.__local__.find_extractor_name(CLOWDER_URI, self._get_test_api_key(), test_name)
-        except Exception as ex:
-            print("Exception was caught finding extractor name: ", str(ex))
-        finally:
-            self.assertIsNone(ex_name, "Extractor name '" + test_name + "' was found but should not have been")
-            
-        print("test_failure_find_extractor_name for '" + test_name + "' passed")
-        
-    def test_get_dataset_id(self):
-        """Unit test for returning the ID of a dataset
-        """
-        test_name = os.getenv("TEST_DATASET_NAME")
-        self.assertIsNotNone(test_name, "Unable to find a configured environment variable of TEST_DATASET_NAME")
-            
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, self._get_test_api_key(), test_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id ", str(ex))
-        finally:
-            self.assertIsNotNone(ds_id, "Dataset ID for dataset '" + test_name + "' was not found")
-            
-        print("test_get_dataset_id for '" + test_name + "' passed: " + ds_id)
-        
-    def test_failure_get_dataset_id(self):
-        """Unit test for returning the ID of a dataset
-        """
-        test_name = str(uuid.uuid4())
-        self.assertIsNotNone(test_name, "Unable to create dataset name for failure test")
-            
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, self._get_test_api_key(), test_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id ", str(ex))
-        finally:
-            self.assertIsNone(ds_id, "Dataset ID for dataset '" + test_name + "' was found but should not have been")
-            
-        print("test_failure_get_dataset_id for '" + test_name + "' passed")
-
-    def test_get_space_id(self):
-        """Unit test for returning the ID of a space
-        """
-        test_name = os.getenv("TEST_SPACE_NAME")
-        self.assertIsNotNone(test_name, "Unable to find a configured environment variable of TEST_SPACE_NAME")
-            
-        try:
-            space_id = pu.__local__.get_space_id(CLOWDER_URI, self._get_test_api_key(), test_name)
-        except Exception as ex:
-            print("Exception was caught finding space id ", str(ex))
-        finally:
-            self.assertIsNotNone(space_id, "Space ID for space '" + test_name + "' was not found")
-            
-        print("test_get_space_id for '" + test_name + "' passed: " + space_id)
-        
-    def test_failure_get_space_id(self):
-        """Unit test for returning the ID of a space
-        """
-        test_name = str(uuid.uuid4())
-        self.assertIsNotNone(test_name, "Unable to create a space name for failure test")
-            
-        try:
-            space_id = pu.__local__.get_space_id(CLOWDER_URI, self._get_test_api_key(), test_name)
-        except Exception as ex:
-            print("Exception was caught finding space id ", str(ex))
-        finally:
-            self.assertIsNone(space_id, "Space ID for space '" + test_name + "' was found but should not have been")
-            
-        print("test_failure_get_space_id for '" + test_name + "' passed by not finding a space")
-        
-    def test_create_space(self):
-        """Unit test for creating a space in Clowder
-        """
-        test_name = uuid.uuid4().hex
-        self.assertIsNotNone(test_name, "Unable to generate a space name for testing space creation")
-            
-        try:
-            space_id = pu.__local__.create_space(CLOWDER_URI, self._get_test_api_key(), test_name)
-        except Exception as ex:
-            print("Exception was caught creating a space ", str(ex))
-        finally:
-            self.assertIsNotNone(space_id, "A space named '" + test_name + "' was not created")
-            
-        print("test_create_space for '" + test_name + "' passed: " + space_id)
-
-    def test_prepare_space_1(self):
-        """Test space preparation with space_must_exist = None and existing space
-        """
-        test_name = os.getenv("TEST_SPACE_NAME")
-        self.assertIsNotNone(test_name, "Unable to find a configured environment variable of TEST_SPACE_NAME")
-        
-        space_must_exist = None
-        try:
-            space_id = pu.__local__.prepare_space(CLOWDER_URI, self._get_test_api_key(), test_name, space_must_exist)
-        except Exception as ex:
-            print("Exception was caught testing space preparation ", str(ex))
-        finally:
-            self.assertIsNotNone(space_id, "The existing space '" + test_name +
-                                 "' was not prepared: space_must_exist=" + str(space_must_exist))
-            
-        print("test_prepare_space_1 for '" + test_name + "' with space_must_exist=" + str(space_must_exist) +
-              " passed: " + space_id)
-
-    def test_prepare_space_2(self):
-        """Test space preparation with space_must_exist = None and non-existing space
-        """
-        test_name = str(uuid.uuid4())
-        self.assertIsNotNone(test_name, "Unable to create a space name for testing space preparation")
-        
-        space_must_exist = None
-        try:
-            space_id = pu.__local__.prepare_space(CLOWDER_URI, self._get_test_api_key(), test_name, space_must_exist)
-        except Exception as ex:
-            print("Exception was caught testing space preparation ", str(ex))
-        finally:
-            self.assertIsNotNone(space_id, "The new space '" + test_name + "' was not prepared: space_must_exist=" +
-                                 str(space_must_exist))
-            
-        print("test_prepare_space_2 for '" + test_name + "' with space_must_exist=" + str(space_must_exist) +
-              " passed: " + space_id)
-
-    def test_prepare_space_3(self):
-        """Test space preparation with space_must_exist = True and existing space
-        """
-        test_name = os.getenv("TEST_SPACE_NAME")
-        self.assertIsNotNone(test_name, "Unable to find a configured environment variable of TEST_SPACE_NAME")
-        
-        space_must_exist = True
-        try:
-            space_id = pu.__local__.prepare_space(CLOWDER_URI, self._get_test_api_key(), test_name, space_must_exist)
-        except Exception as ex:
-            print("Exception was caught testing space preparation ", str(ex))
-        finally:
-            self.assertIsNotNone(space_id, "The existing space '" + test_name +
-                                 "' was not prepared: space_must_exist=" + str(space_must_exist))
-            
-        print("test_prepare_space_3 for '" + test_name + "' with space_must_exist=" + str(space_must_exist) +
-              " passed: " + space_id)
-
-    def test_prepare_space_4(self):
-        """Test space preparation with space_must_exist = True and non-existing space
-        """
-        test_name = str(uuid.uuid4())
-        self.assertIsNotNone(test_name, "Unable to create a space name for testing space preparation")
-        
-        space_must_exist = True
-        try:
-            space_id = pu.__local__.prepare_space(CLOWDER_URI, self._get_test_api_key(), test_name, space_must_exist)
-        except Exception as ex:
-            print("Exception was caught testing space preparation ", str(ex))
-        finally:
-            self.assertIsNone(space_id, "The new space '" + test_name + "' was not prepared: space_must_exist=" +
-                              str(space_must_exist))
-            
-        print("test_prepare_space_4 for '" + test_name + "' with space_must_exist=" + str(space_must_exist) +
-              " passed by not preparing a space")
-
-    def test_prepare_space_5(self):
-        """Test space preparation with space_must_exist = False and non-existing space
-        """
-        test_name = str(uuid.uuid4())
-        self.assertIsNotNone(test_name, "Unable to create a space name for testing space preparation")
-        
-        space_must_exist = False
-        try:
-            space_id = pu.__local__.prepare_space(CLOWDER_URI, self._get_test_api_key(), test_name, space_must_exist)
-        except Exception as ex:
-            print("Exception was caught testing space preparation ", str(ex))
-        finally:
-            self.assertIsNotNone(space_id, "The new space '" + test_name + "' was not prepared: space_must_exist=" +
-                                 str(space_must_exist))
-            
-        print("test_prepare_space_5 for '" + test_name + "' with space_must_exist=" + str(space_must_exist) +
-              " passed: " + space_id)
-
-    def test_prepare_space_6(self):
-        """Test space preparation with space_must_exist = False and existing space
-        """
-        test_name = os.getenv("TEST_SPACE_NAME")
-        self.assertIsNotNone(test_name, "Unable to find a configured environment variable of TEST_SPACE_NAME")
-        
-        space_must_exist = False
-        try:
-            space_id = pu.__local__.prepare_space(CLOWDER_URI, self._get_test_api_key(), test_name, space_must_exist)
-        except Exception as ex:
-            print("Exception was caught testing space preparation ", str(ex))
-        finally:
-            self.assertIsNone(space_id, "The existing space '" + test_name + "' was not prepared: space_must_exist=" +
-                              str(space_must_exist))
-            
-        print("test_prepare_space_6 for '" + test_name + "' with space_must_exist=" + str(space_must_exist) +
-              " passsed by not preparing a space")
-
-    def test_upload_as_file(self):
-        """Tests uploading a string as a file
-        """
-        test_name = uuid.uuid4().hex
-        self.assertIsNotNone(test_name, "Unable to create a temporary filename for uploading")
-        ds_name = os.getenv("TEST_DATASET_NAME")
-        self.assertIsNotNone(ds_name, "Unable to find a configured environment variable of TEST_DATASET_NAME")
-        api_key = self._get_test_api_key()
-        
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, api_key, ds_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id ", str(ex))
-        finally:
-            self.assertIsNotNone(ds_id, "Dataset ID for dataset '" + ds_name + "' was not found")
-        
-        file_content = "This is a test string"
-        try:
-            file_id = pu.__local__.upload_as_file(CLOWDER_URI, api_key, ds_id, test_name, file_content)
-        except Exception as ex:
-            print("Exception was caught testing string-as-file upload ", str(ex))
-        finally:
-            self.assertIsNotNone(file_id, "The file '" + test_name + "' was not uploaded to dataset '" + ds_name + "'")
-
-        print("test_upload_as_file for '" + test_name + "' passed: " + file_id)
-
-    def test_upload_file(self):
-        """Tests uploading a file from disk
-        """
-        test_name = uuid.uuid4().hex
-        self.assertIsNotNone(test_name, "Unable to create a temporary filename for uploading")
-        file_name = os.getenv("TEST_FILE_UPLOAD_PATH")
-        self.assertIsNotNone(file_name, "Unable to find a configured environment variable of TEST_FILE_UPLOAD_PATH")
-        ds_name = os.getenv("TEST_DATASET_NAME")
-        self.assertIsNotNone(ds_name, "Unable to find a configured environment variable of TEST_DATASET_NAME")
-        api_key = self._get_test_api_key()
-
-        # Ensure the file exists
-        self.assertTrue(os.path.isfile(file_name), "File specified for upload test was not found: '" +
-                        test_name + "'")
-        
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, api_key, ds_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id for file upload test ", str(ex))
-        finally:
-            self.assertIsNotNone(ds_id, "Dataset ID for dataset '" + ds_name + "' was not found")
-        
-        try:
-            file_id = pu.__local__.upload_file(CLOWDER_URI, api_key, ds_id, test_name, file_name)
-        except Exception as ex:
-            print("Exception was caught testing file upload ", str(ex))
-        finally:
-            self.assertIsNotNone(file_id, "The file '" + test_name + "' was not uploaded to dataset '" + ds_name + "'")
-
-        print("test_upload_file for '" + test_name + "' passed: " + file_id)
-
-    def test_remove_file_by_id(self):
-        """Tests removing a file by file ID
-        """
-        test_name = uuid.uuid4().hex
-        self.assertIsNotNone(test_name, "Unable to create a temporary filename for uploading")
-        ds_name = os.getenv("TEST_DATASET_NAME")
-        self.assertIsNotNone(ds_name, "Unable to find a configured environment variable of TEST_DATASET_NAME")
-        api_key = self._get_test_api_key()
-        
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, api_key, ds_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id ", str(ex))
-        finally:
-            self.assertIsNotNone(ds_id, "Dataset ID for dataset '" + ds_name + "' was not found")
-        
-        file_content = "This is a test string"
-        try:
-            file_id = pu.__local__.upload_as_file(CLOWDER_URI, api_key, ds_id, test_name, file_content)
-        except Exception as ex:
-            print("Exception was caught file upload for testing file removal ", str(ex))
-        finally:
-            self.assertIsNotNone(file_id, "The file '" + test_name + "' was not uploaded to dataset '" + ds_name + "'")
-
-        # Wait for the file to show up
-        self.assertTrue(_wait_for_file(api_key, ds_id, test_name))
-
-        try:
-            file_removed = pu.__local__.remove_file_by_id(CLOWDER_URI, api_key, file_id)
-        except Exception as ex:
-            print("Exception was caught file removing ", str(ex))
-        finally:
-            self.assertTrue(file_removed, "The file '" + test_name + "' was removed from dataset '" + ds_name + "'")
-
-        print("test_remove_file_by_id for '" + test_name + "' passed: " + file_id)
-        
-    def test_checked_remove_file_1(self):
-        """Checks for a non-existing file's existance before trying to remove it
-        """
-        test_name = uuid.uuid4().hex
-        self.assertIsNotNone(test_name, "Unable to create a temporary filename for testing checked file removal")
-        ds_name = os.getenv("TEST_DATASET_NAME")
-        self.assertIsNotNone(ds_name, "Unable to find a configured environment variable of TEST_DATASET_NAME")
-        api_key = self._get_test_api_key()
-        
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, api_key, ds_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id ", str(ex))
-        finally:
-            self.assertIsNotNone(ds_id, "Dataset ID for dataset '" + ds_name + "' was not found")
-
-        try:
-            file_removed = pu.__local__.checked_remove_file(CLOWDER_URI, api_key, ds_id, test_name)
-        except Exception as ex:
-            print("Exception was caught file removing ", str(ex))
-        finally:
-            self.assertFalse(file_removed, "The file '" + test_name + "' was removed from dataset '" + ds_name + "'")
-
-        print("test_checked_remove_file_1 for '" + test_name + "' passed by not removing a non-existant file")
-
-    def test_checked_remove_file_2(self):
-        """Checks for an existing file's existance before trying to remove it
-        """
-        test_name = uuid.uuid4().hex
-        self.assertIsNotNone(test_name, "Unable to create a temporary filename for testing checked file removal")
-        ds_name = os.getenv("TEST_DATASET_NAME")
-        self.assertIsNotNone(ds_name, "Unable to find a configured environment variable of TEST_DATASET_NAME")
-        api_key = self._get_test_api_key()
-        
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, api_key, ds_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id ", str(ex))
-        finally:
-            self.assertIsNotNone(ds_id, "Dataset ID for dataset '" + ds_name + "' was not found")
-        
-        file_content = "This is a test string"
-        try:
-            file_id = pu.__local__.upload_as_file(CLOWDER_URI, api_key, ds_id, test_name, file_content)
-        except Exception as ex:
-            print("Exception was caught file upload for testing file removal ", str(ex))
-        finally:
-            self.assertIsNotNone(file_id, "The file '" + test_name + "' was not uploaded to dataset '" +
-                                 ds_name + "'")
-
-        # Wait for the file to show up
-        self.assertTrue(_wait_for_file(api_key, ds_id, test_name))
-
-        try:
-            file_removed = pu.__local__.checked_remove_file(CLOWDER_URI, api_key, ds_id, test_name)
-        except Exception as ex:
-            print("Exception was caught file removing ", str(ex))
-        finally:
-            self.assertTrue(file_removed, "The file '" + test_name + "' was not removed from dataset '" +
-                            ds_name + "'")
-
-        print("test_checked_remove_file_2 for '" + test_name + "' passed by removing existing file")
-        
-    def test_start_extractor(self):
-        """Tests sending a command to start an extractor
-        """
-        test_name = os.getenv("TEST_EXTRACTOR_FULL_NAME")
-        self.assertIsNotNone(test_name, "Unable to find a configured environment variable of TEST_EXTRACTOR_FULL_NAME")
-        ds_name = os.getenv("TEST_DATASET_NAME")
-        self.assertIsNotNone(ds_name, "Unable to find a configured environment variable of TEST_DATASET_NAME")
-        api_key = self._get_test_api_key()
-        
-        try:
-            ds_id = pu.__local__.get_dataset_id(CLOWDER_URI, api_key, ds_name)
-        except Exception as ex:
-            print("Exception was caught finding dataset id ", str(ex))
-        finally:
-            self.assertIsNotNone(ds_id, "Dataset ID for dataset '" + ds_name + "' was not found")
-            
-        try:
-            extractor_started = pu.__local__.start_extractor(CLOWDER_URI, self._get_test_api_key(), ds_id, test_name)
-        except Exception as ex:
-            print("Exception was caught starting extractor", str(ex))
-        finally:
-            self.assertTrue(extractor_started, "Extractor '" + test_name + "' was not started")
-            
-        print("test_start_extractor for '" + test_name + "' passed")
-        
-        
-    def test_prepare_experiment(self):
-        """Testing preparing experiment data
-        """
-        study = str(uuid.uuid4())
-        season = str(uuid.uuid4())
-        timestamp = str(uuid.uuid4())
-        
-        try:
-            experiment = pu.prepare_experiment(study, season, timestamp)
-        except Exception as ex:
-            print("Exception was caught preparing experiment data", str(ex))
-        finally:
-            self.assertIsNotNone(experiment, "Experiment data was not prepared")
-            self.assertEqual(experiment['studyName'], study, "Experiment name is not correct")
-            self.assertEqual(experiment['season'], season, "Experiment season is not correct")
-            self.assertEqual(experiment['observationTimestamp'], timestamp, "Experiment timestamp is not correct")
-
-        print("test_prepare_experiment passed")
+    return True
