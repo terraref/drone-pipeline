@@ -162,10 +162,10 @@ class __local__():
         return result_key
 
     @staticmethod
-    def find_extractor_name(clowder_api_url: str, api_key: str, extractor_name: str) -> str:
+    def find_extractor_name(clowder_url_url: str, api_key: str, extractor_name: str) -> str:
         """Looks up the Clowder registered extractor associated with the extractor name
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             extractor_name(string): part of the extractor name to match
         Return:
@@ -179,7 +179,7 @@ class __local__():
         logger = logging.getLogger(__name__)
 
         # Get all the registered extractors
-        url = "%s/api/extractors?key=%s" % (clowder_api_url, api_key)
+        url = "%s/api/extractors?key=%s" % (clowder_url_url, api_key)
         get_args = {"headers": {"Accept": "application/json"}}
 
         logger.debug("find_extractor_name calling get: %s", url)
@@ -194,10 +194,10 @@ class __local__():
         return None
 
     @staticmethod
-    def get_dataset_id(clowder_api_url: str, api_key: str, dataset_name: str) -> str:
+    def get_dataset_id(clowder_url_url: str, api_key: str, dataset_name: str) -> str:
         """Retrieves the ID of a dataset by name
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             dataset_name(string): the name of the dataset to get the ID of
         Return:
@@ -209,7 +209,7 @@ class __local__():
         logger = logging.getLogger(__name__)
 
         # Look up the dataset
-        url = "%s/api/datasets?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(dataset_name))
+        url = "%s/api/datasets?key=%s&title=%s&exact=true" % (clowder_url_url, api_key, str(dataset_name))
 
         logger.debug("get_dataset_id calling get: %s", url)
         result_id = __local__.get(url, result_key='id', result_index=0)
@@ -219,10 +219,10 @@ class __local__():
         return result_id
 
     @staticmethod
-    def get_space_id(clowder_api_url: str, api_key: str, space_name: str) -> str:
+    def get_space_id(clowder_url_url: str, api_key: str, space_name: str) -> str:
         """Looks up and returns the ID associated with the Clowder space named
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             space_name(string): the name of the space to fetch the ID of
         Return:
@@ -234,7 +234,7 @@ class __local__():
         logger = logging.getLogger(__name__)
 
         # Make the call to get the ID
-        url = "%s/api/spaces?key=%s&title=%s&exact=true" % (clowder_api_url, api_key, str(space_name))
+        url = "%s/api/spaces?key=%s&title=%s&exact=true" % (clowder_url_url, api_key, str(space_name))
 
         logger.debug("get_space_id calling get: %s", url)
         result_id = __local__.get(url, result_key='id', result_index=0)
@@ -244,10 +244,10 @@ class __local__():
         return result_id
 
     @staticmethod
-    def create_space(clowder_api_url: str, api_key: str, space_name: str, description: str = "") -> str:
+    def create_space(clowder_url_url: str, api_key: str, space_name: str, description: str = "") -> str:
         """Creates the space in Clowder and returns its ID
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             space_name(string): the name of the space to create
             description(string): optional parameter describing the space
@@ -260,7 +260,7 @@ class __local__():
         logger = logging.getLogger(__name__)
 
         # Make the call to create the space
-        url = "%s/api/spaces?key=%s" % (clowder_api_url, api_key)
+        url = "%s/api/spaces?key=%s" % (clowder_url_url, api_key)
         post_args = {"headers": {"Content-Type": "application/json"},
                      "data": json.dumps({"name": space_name, "description": description})
                     }
@@ -274,10 +274,10 @@ class __local__():
         return result_id
 
     @staticmethod
-    def prepare_space(clowder_api_url: str, api_key: str, space_name: str, space_must_exist: bool) -> str:
+    def prepare_space(clowder_url_url: str, api_key: str, space_name: str, space_must_exist: bool) -> str:
         """Prepares the Clowder space for the extractor according to the user's wishes
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             space_name(string): the name of the space to create
             space_must_exist(boolean): set to None to create the space name if it doesn't exist,
@@ -291,7 +291,7 @@ class __local__():
 
         # First check if the space exists
         try:
-            space_id = __local__.get_space_id(clowder_api_url, api_key, space_name)
+            space_id = __local__.get_space_id(clowder_url_url, api_key, space_name)
         except requests.HTTPError as ex:
             logger.error("Exception caught while trying to get the ID for space \"%s\"",
                          space_name)
@@ -316,7 +316,7 @@ class __local__():
         # We create the space if it doesn't exist already
         if space_id is None:
             try:
-                space_id = __local__.create_space(clowder_api_url, api_key, space_name)
+                space_id = __local__.create_space(clowder_url_url, api_key, space_name)
             except requests.HTTPError as ex:
                 logger.error("Exception caught while trying to create space \"%s\"", space_name)
                 logger.error("Exception information follows")
@@ -335,10 +335,10 @@ class __local__():
         return space_id
 
     @staticmethod
-    def checked_remove_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str) -> bool:
+    def checked_remove_file(clowder_url_url: str, api_key: str, dataset_id: str, filename: str) -> bool:
         """Checks for a file in a dataset and deletes it if found
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             dataset_id(string): the ID of the dataset to look in for the file
             filename(string): the name of the file to find and remove
@@ -352,7 +352,7 @@ class __local__():
         logger = logging.getLogger(__name__)
 
         # Try to find the file
-        url = "%s/api/datasets/%s/files?key=%s" % (clowder_api_url, dataset_id, api_key)
+        url = "%s/api/datasets/%s/files?key=%s" % (clowder_url_url, dataset_id, api_key)
 
         logger.debug("checked_remove_file calling get: %s", url)
         result_json = __local__.get(url)
@@ -360,14 +360,14 @@ class __local__():
         if not result_json is None:
             for one_file in result_json:
                 if 'filename' in one_file and one_file['filename'] == filename:
-                    return __local__.remove_file_by_id(clowder_api_url, api_key, one_file['id'])
+                    return __local__.remove_file_by_id(clowder_url_url, api_key, one_file['id'])
         return False
 
     @staticmethod
-    def remove_file_by_id(clowder_api_url: str, api_key: str, file_id: str) -> bool:
+    def remove_file_by_id(clowder_url_url: str, api_key: str, file_id: str) -> bool:
         """Deletes the file identified by its ID
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             dataset_id(string): the ID of the dataset to remove the file from
             file_id(string): the ID of the file to remove
@@ -381,7 +381,7 @@ class __local__():
 
         # Remove the file completely from the system including any Clowder spaces, dataset, or
         # collections
-        url = "%s/api/files/%s?key=%s" % (clowder_api_url, file_id, api_key)
+        url = "%s/api/files/%s?key=%s" % (clowder_url_url, file_id, api_key)
 
         logger.debug("remove_file_by_id calling delete: %s", url)
         result_status = __local__.delete(url, result_key='status')
@@ -391,10 +391,10 @@ class __local__():
         return not result_status is None
 
     @staticmethod
-    def upload_as_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str, configuration: str) -> str:
+    def upload_as_file(clowder_url_url: str, api_key: str, dataset_id: str, filename: str, configuration: str) -> str:
         """Uploads a string as a file
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             dataset_id(string): the ID of the dataset to create the file in
             filename(string): the name of the file to create
@@ -412,7 +412,7 @@ class __local__():
 
         # Upload the temporary file to the dataset
         result_id = None
-        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
+        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_url_url, dataset_id, api_key)
         post_args = {"files": {"File": (filename, configuration)}
                     }
 
@@ -427,10 +427,10 @@ class __local__():
         return result_id
 
     @staticmethod
-    def upload_file(clowder_api_url: str, api_key: str, dataset_id: str, filename: str, config_file: str) -> str:
+    def upload_file(clowder_url_url: str, api_key: str, dataset_id: str, filename: str, config_file: str) -> str:
         """Uploads a string as a file
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             dataset_id(string): the ID of the dataset to create the file in
             filename(string): the name of the file to create
@@ -459,7 +459,7 @@ class __local__():
 
         # Upload the file to the dataset
         result_id = None
-        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_api_url, dataset_id, api_key)
+        url = "%s/api/uploadToDataset/%s?key=%s&extract=false" % (clowder_url_url, dataset_id, api_key)
         config_fd = open(our_filename, 'rb')
         post_args = {"files": {"File": config_fd}}
         try:
@@ -479,10 +479,10 @@ class __local__():
         return result_id
 
     @staticmethod
-    def start_extractor(clowder_api_url: str, api_key: str, dataset_id: str, extractor_name: str) -> bool:
+    def start_extractor(clowder_url_url: str, api_key: str, dataset_id: str, extractor_name: str) -> bool:
         """Starts the extractor for the indicated dataset
         Args:
-            clowder_api_url(string): the URL to the Clowder instance's API to call
+            clowder_url_url(string): the URL to the Clowder instance's API to call
             api_key(string): the key to use when calling the API
             dataset_id(string): the ID of the dataset to create the file in
             extractor_name(string): the Clowder name of the extractor to run
@@ -494,7 +494,7 @@ class __local__():
         logger = logging.getLogger(__name__)
 
         # Start the extractor on the dataset
-        url = "%s/api/datasets/%s/extractions?key=%s" % (clowder_api_url, dataset_id, api_key)
+        url = "%s/api/datasets/%s/extractions?key=%s" % (clowder_url_url, dataset_id, api_key)
         body_params = {'extractor': extractor_name}
         request_headers = {'Content-Type': 'application/json'}
 
@@ -551,7 +551,6 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
     logger = logging.getLogger(__name__)
 
     space_id = None
-    clowder_api = clowder_url + "/api"
     our_api_key = api_key
 
     # We wrap everything in an try-except block
@@ -561,18 +560,18 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
             our_api_key = __local__.get_api_key(clowder_url, username, password)
 
         # Make sure the dataset exists
-        dataset_id = __local__.get_dataset_id(clowder_api, our_api_key, dataset)
+        dataset_id = __local__.get_dataset_id(clowder_url, our_api_key, dataset)
         if dataset_id is None:
             return False
 
         # Make sure we can find the extractor requested
-        extractor_name = __local__.find_extractor_name(clowder_api, our_api_key, extractor)
+        extractor_name = __local__.find_extractor_name(clowder_url, our_api_key, extractor)
         if not extractor_name:
             return False
 
         # Get the ID of the space that is named, based upon the specified condition of
         # space_must_exist
-        space_id = __local__.prepare_space(clowder_api, our_api_key, space_name,
+        space_id = __local__.prepare_space(clowder_url, our_api_key, space_name,
                                            space_must_exist)
         if not space_id:
             return False
@@ -588,10 +587,10 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
         experiment_file.write(YAML_INDENT2 + "space: " + space_id + "\n")
 
         # Replace/upload the experiment.yaml file
-        __local__.checked_remove_file(clowder_api, our_api_key, dataset_id, "experiment.yaml")
+        __local__.checked_remove_file(clowder_url, our_api_key, dataset_id, "experiment.yaml")
         experiment_yaml = experiment_file.getvalue()
         experiment_file.close()
-        experiment_file_id = __local__.upload_as_file(clowder_api, our_api_key, dataset_id,
+        experiment_file_id = __local__.upload_as_file(clowder_url, our_api_key, dataset_id,
                                                       "experiment.yaml", experiment_yaml)
         if not experiment_file_id:
             return False
@@ -599,16 +598,16 @@ def start_extractor(clowder_url: str, experiment: dict, username: str, password:
         # Replace/upload the extractor-opendronemap.txt file
         extractor_config_file = "extractor-%s.txt" % (extractor)
         if config_file:
-            config_file_id = __local__.upload_file(clowder_api, our_api_key, dataset_id,
+            config_file_id = __local__.upload_file(clowder_url, our_api_key, dataset_id,
                                                    extractor_config_file, config_file)
         else:
-            config_file_id = __local__.upload_as_file(clowder_api, our_api_key, dataset_id,
+            config_file_id = __local__.upload_as_file(clowder_url, our_api_key, dataset_id,
                                                       extractor_config_file, "")
         if not config_file_id:
             return False
 
         # Make the call to start the extractor
-        request_id = __local__.start_extractor(clowder_api, our_api_key, dataset_id, extractor_name)
+        request_id = __local__.start_extractor(clowder_url, our_api_key, dataset_id, extractor_name)
         if not request_id:
             logger.warning("The extractor \"%d\" wasn't started", extractor_name)
             return False
