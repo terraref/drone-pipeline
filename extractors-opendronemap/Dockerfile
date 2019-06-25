@@ -16,10 +16,8 @@ RUN chown -R extractor /home/extractor \
 
 RUN pip install --upgrade pip && \
     pip install -U numpy && \
+    pip install -U utm influxdb laspy && \
     pip install --ignore-installed enum34 terrautils
-
-# Copy and install our utilities
-RUN pip install -U pipelineutils 
 
 # Copy our source files
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
