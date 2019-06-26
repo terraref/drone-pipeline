@@ -1,3 +1,10 @@
+# READ THIS
+# The Travis CI environment needs to have the following defined:
+# 1. CLOWDER_HOST_URI - the Clowder host URI to test against. Needs to be clean for each testing run (no post-
+#    run cleanup is done at this time)
+# 2. TEST_DATASET_NAME - the name of the dataset to create and use for testing
+# 3. DOCKER_COMPOSE_VERSION - the version of docker-compose to install
+
 # Superuser for docker commands and such
 sudo: required
 
@@ -29,19 +36,23 @@ stages:
 matrix:
   include:
     - name: "OpenDroneMap Extractor"
-      env: EXTRACTOR_BRANCH=opendronemap TEST_SOURCE_ARCHIVE=odm_test_data.tar TEST_COMPARE_ARCHIVE=odm_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:opendronemap
+      env: EXTRACTOR_BRANCH=opendronemap TEST_SOURCE_ARCHIVE=odm_test_data.tar TEST_COMPARE_ARCHIVE=odm_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:opendronemap RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=rgb_.tif,thumb.tif,10pct.tif,10pct.png,.laz,shp_.shp,shp_.dbf,shp_.prj,shp_.shx,shp_.txt
       if: branch = master OR branch = develop OR branch =~ /.*opendronemap.*/ OR branch =~ /.*odm.*/ OR branch =~ /.*travis.*/
     #- name: "Clip By Shape Extractor"
     #  env: EXTRACTOR_BRANCH=clipbyshape
     #  env: TEST_SOURCE_ARCHIVE=clipbyshape_test_data.tar
     #  env: TEST_COMPARE_ARCHIVE=clipbyshape_results.tar
     #  env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:clipbyshape
+    #  env: RESULT_DATASET_NAME=
+    #  env: RESULT_DATASET_FILE_MATCH=
     #  if: branch = master OR branch = develop OR branch =~ /.*clipbyshape.*/ OR branch =~ /.*travis.*/
     #- name: "Canopy Cover Value Extractor"
     #  env: EXTRACTOR_BRANCH=canopycover
     #  env: TEST_SOURCE_ARCHIVE=canopycover_test_data.tar
     #  env: TEST_COMPARE_ARCHIVE=canopycover_results.tar
     #  env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:canopycover
+    #  env: RESULT_DATASET_NAME=
+    #  env: RESULT_DATASET_FILE_MATCH=
     #  if: branch = master OR branch = develop OR branch =~ /.*canopycover.*/ OR branch =~ /.*travis.*/
 
 # Secure stuff: travis encrypt --com '<var>=<value>'
@@ -51,6 +62,9 @@ env:
   - secure: "R8Ngn7lFa2itiwZa/Rp4K2sqFsLv2iAyDoOZjmE92fHgqSLYvi4cKXjSOzPIf/CInQhLDkFSKbgTUK72eEfoRhMezIkX/qJG1MUDYT6XhyNlz3XF3mdSmtxEVzgZ1uIsUS1mGqEYvU+sIGxFETO0H/xR6SzAE4EX2B8AE2x4kKa+BnIayT2SaRI36N0TZ2pET4C4Qy4krBvihV2NmixF6rzjwJ6F3jKq50O0S/dhI8+seFInqstJB5FToQkT4/LnNOnqc+pClv0HdL3ZowMOqWiostV0j97Jm71n9zFAJl4GAthE4ZhAGfmohMb3J/g17rtikNFOxAIjTBSWGJg1oSWIg8vD222AVSPjzv9Wa8CX/LauZXRbZ4CshI0Tfz1U14UfUwxGdsiP2zcYMU/hBkcV4coiedtip9UPg9z55dluO9DLolmu2jFoWa9FUhvhbAr4TjveLngaT3SN+N0MzkeHG+ITHM4KyyfFK/jDcsFLTsbeMpZbioh74AhLswsKrAxVAjeAZXynG4+OMTdoFNpIGkMJ7u46lj+xw2TsVRcEX4HBLuExL78xRfL25ZCbNLqZsn2iQ5BbKKsFtMWeDogyq06uGv0GwNjtt303dM18QSIncIsUDrGG4G07S0v0twu+a2tThNtPmFw4GqmmNDOIe68SiuMYYIxWuI+ahGA="
   - secure: "nSSkp37NCAvwlj1WUKIqm8alH+yPsNA6efbGAYO1weclSr+ZK/QWoSp3oMEM0QvWHska5X4Xosdn3G8rRbSzaD/ZkFnkOVpyfWjJlPZbgKRZn07N0koRnq2sNp3HKYlc+2lOd8iIkFq52AcJQOhdVo0DsFlPwrFPj50zUCyML9vObvJa4WSzA7esTD4xArUpbajkYYJvTPViM/JlY8h5I0//lm1oauIj6c+w7vfTTEEpXoohp0QBgs6F54WjyQG/Pn5ARedDv1+F7FXutaFvcaHvMgHB44ft87QP0mGDcdjMYnAgzfgvSVykqzzXgR0a7qyUfHBeVvUbSxT0aRG8pgynvHKrfO12nyv6VyTPUAyv4PYPt0wcsZfyDYQgRvz7fH8+ZDK2XnyTdF32xSTbMmTepAIhrdBbvoecBuogBUOG/yjuUYF1CR7xxWU6q5vYSNh33U1zIM/3skcdeh+tiqbCP6TguBPbPE9jYqI0O9EVl9XE9btuVaN0VS1ELBJW22wW8rDRqQIt+onWwLSf1iS2HyU+Qj3TL3rIz3/i8oxPrLAMwpswGxI4bvXYz27LVfr6DDF8w5s0+tDmC0uzS3L7ZmhlokoVOUWFu5u4ETg69eEA/UXiVppnZArZ9Efg3uiobuFZIbaGXjCNn1EmX5GWu6eddaHgYmiwRXwoyQM="
   - DOCKER_NAMED_CONTAINER=test_extractor   # Used to name the container for easier finding
+  - TEST_CLOWDER_USERNAME=test@example.com
+  - TEST_CLOWDER_PASSWORD=testPassword
+  - TEST_SPACE_NAME=test_space
 
 # Basic setup for the build. Install software needed by all extractors followed by optional installs for specific extractors
 before_install:
@@ -66,10 +80,9 @@ before_install:
   - ls -l test
   - echo "Attempting to update to docker-compose version:\ $DOCKER_COMPOSE_VERSION"
   - sudo rm -f /usr/local/bin/docker-compose   # Update docker-compose by removing any old versions
-  - curl -L https://github.com/docker/compose/releases/download/$DOCKER_COMPOSE_VERSION/docker-compose-`uname -s`-`uname -m` > docker-compose
-  - chmod +x docker-compose
-  - ls -l docker-compose     # Show that docker-compose is in place with correct permissions
-  - sudo mv docker-compose /usr/local/bin  # Put into correct spot
+  - sudo curl -L "https://github.com/docker/compose/releases/download/1.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  - sudo chmod +x /usr/local/bin/docker-compose
+  - ls -l /usr/local/bin/docker-compose     # Show that docker-compose is in place with correct permissions
   - docker-compose --version
   # Install common packages
   - echo "Installing packages"
@@ -91,12 +104,12 @@ install:
   # Setup the clowder account
   - echo "Starting Clowder configuration"
   - echo "Clowder URL:\ $CLOWDER_HOST_URI"
-  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/signup?email=test%40example.com"
+  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/signup?email=$TEST_CLOWDER_USERNAME"
   - ./test/wait_for_registration.sh
   - URI=`sed -r 's/.*href="(.+)">.*/\1/' reg.txt`
   - echo "URI:\ $URI"
-  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$URI?firstName=test&lastName=test&password.password1=testPassword&password.password2=testPassword&agreementAcknowledged=true"
-  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/authenticate/userpass?username=test%40example.com&password=testPassword" -D headers.txt
+  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$URI?firstName=test&lastName=test&password.password1=$TEST_CLOWDER_PASSWORD&password.password2=$TEST_CLOWDER_PASSWORD&agreementAcknowledged=true"
+  - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/authenticate/userpass?username=$TEST_CLOWDER_USERNAME&password=$TEST_CLOWDER_PASSWORD" -D headers.txt
   - USER_ID=`grep 'Set-Cookie:\ id' headers.txt | sed -r 's/Set-(.+);.*;.*/\1/'`
   - echo "USER ID:\ $USER_ID"
   - export API_KEY=`curl -X POST -v -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/api/users/keys?name=testingkey" -H "$USER_ID" | sed -r 's/.*"key":"(.+)".*/\1/'`
@@ -105,23 +118,25 @@ install:
 # Setup the clowder environment
 before_script:
   - echo "Setting up Clowder spaces and datasets"
-  - export SPACE_ID=`curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d '{"name":"test_space","description":"Test results"}' "$CLOWDER_HOST_URI/api/spaces?key=$API_KEY" | sed -r 's/.*id\"\:\"(.+)\".*/\1/'`
+  - export SPACE_ID=`curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d "{\"name\":\"$TEST_SPACE_NAME\",\"description\":\"Test results\"}" "$CLOWDER_HOST_URI/api/spaces?key=$API_KEY" | sed -r 's/.*id\"\:\"(.+)\".*/\1/'`
   - echo "SPACE_ID:\ $SPACE_ID"
   - export DATASET_ID=`curl -X POST -v -H "accept:application/json" -H "Content-Type:application/json" -d "{\"name\":\"$TEST_DATASET_NAME\"}" "$CLOWDER_HOST_URI/api/datasets/createempty?key=$API_KEY" | sed -r 's/.*id\"\:\"(.+)\".*/\1/'`
   - echo "DATASET ID:\ $DATASET_ID"
   - echo "Building and running the extractor to test using Dockerfile in folder $BUILD_FOLDER"
+  - export CONTAINER_NAME="chrisatua/test:$EXTRACTOR_BRANCH"
+  - echo "Tagging container as:\ $CONTAINER_NAME"
   - docker build -t $CONTAINER_NAME "./$BUILD_FOLDER"
   - docker run --network clowder_clowder -e 'RABBITMQ_URI=amqp://rabbitmq/%2F' -e 'RABBITMQ_EXCHANGE=terra' -d "--name=$DOCKER_NAMED_CONTAINER" "$CONTAINER_NAME"
-  - export EXTRACTOR_NAME=`cat $BUILD_FOLDER/extractor_info.json | grep '\"name\"' | sed -r 's/\"name\"\:.*\"(.+)\",/\1/' | tr -d '[:space:]'`
-  - echo "Found extractor name of:\ $EXTRACTOR_NAME"
+  - export EXTRACTOR_CLOWDER_NAME=`cat $BUILD_FOLDER/extractor_info.json | grep '\"name\"' | sed -r 's/\"name\"\:.*\"(.+)\",/\1/' | tr -d '[:space:]'`
+  - echo "Found extractor name of:\ $EXTRACTOR_CLOWDER_NAME"
   - echo "Loading the data for the extractor test"
   - ./test/extract.sh "test/$TEST_SOURCE_ARCHIVE"  # Uncompress the test files
   - ls -l ./data
-  - ./test/update_yaml.sh "./data/experiment.yaml" "$SPACE_ID" "test@example.com" "testPassword"
+  - ./test/update_yaml.sh "./data/experiment.yaml" "$SPACE_ID" "$TEST_CLOWDER_USERNAME" "$TEST_CLOWDER_PASSWORD"
   - cat ./data/experiment.yaml
   - ./test/upload_data.py                     # Put the files into clowder
   - echo "Registering the extractor and waiting for it to start"
-  - ./test/register_extractor.py ./extractor_info.json
+  - ./test/register_extractor.py $BUILD_FOLDER/extractor_info.json
   - ./test/wait_for_started.py "$CONTAINER_NAME"
 
 # Start the extraction process and get a result
@@ -129,18 +144,19 @@ script:
   - echo "Starting the extractors work"
   - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_bindings
   - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_queues
-  - ./test/start_extract.py "$EXTRACTOR_NAME" "$CLOWDER_HOST_URI/api/datasets/$DATASET_ID/extractions?key=$API_KEY"
+  - ./test/start_extract.py "$EXTRACTOR_CLOWDER_NAME" "$CLOWDER_HOST_URI/api/datasets/$DATASET_ID/extractions?key=$API_KEY"
   - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_queues
   - echo "Waiting for extractor to finish and setting up for test result validation"
   - ./test/wait_for_finish.py "$CONTAINER_NAME"
-  - ./test/extract_results.py  "$TEST_DATASET_NAME"      # get the results
+  - ./test/extract_results.py  "$RESULT_DATASET_NAME"      # get the results
   - ./test/setup_comparables.sh "test/$TEST_COMPARE_ARCHIVE"  # setup any comparables
   - echo "Running the validation of extractor produced data"
   - ls -la
   - ls -la ./datasets
   - ls -la "./datasets/$TEST_DATASET_NAME"
+  - ls -la "./datasets/$RESULT_DATASET_NAME"
   - ls -la ./compare
-  - ./test/validate_results.py      # verify the results
+  - ./test/validate_results.py  "$RESULT_DATASET_FILE_MATCH"    # verify the results
 
 after_script:
   - echo "Deploying container after successful run"

@@ -4,9 +4,13 @@
 """
 
 import os
+import sys
 import math
 import cv2
 import numpy as np
+
+# Maximum difference in size of generated file vs. master before there's an error
+FILE_SIZE_MAX_DIFF_FRACTION = 0.10
 
 # How much difference is allowed before we start looking at values
 # For example, a 10% allowance means we don't start looking at histogram values until bin 25
@@ -24,6 +28,15 @@ HIST_BIN_MAX = 100
 datasets_folder = "./datasets"
 compare_folder = "./compare"
 
+argc = len(sys.argv)
+if argc <= 1:
+    raise RuntimeError("Missing filename match strings parameter")
+if ',' in sys.argv[1]:
+    file_endings = []
+    for ending in sys.argv[1].split(','):
+        file_endings.append(ending.strip())
+else:
+    file_endings = [sys.argv[1].strip()]
 
 def find_file_match(folder, end):
     """Locates a file in the specified folder that has the matching ending.
@@ -68,53 +81,75 @@ def find_file_match(folder, end):
 
     return None
 
+for one_end in file_endings:
+    # Find the file with the correct name
+    master = find_file_match(compare_folder, one_end)
+    source = find_file_match(datasets_folder, one_end)
 
-# Find the file with the correct name
-file_ending = "mask.tif"
-master = find_file_match(compare_folder, file_ending)
-source = find_file_match(datasets_folder, file_ending)
+    print("Master image: " + str(master))
+    print("Source image: " + str(source))
 
-print("Master image: " + str(master))
-print("Source image: " + str(source))
+    if master is None:
+        raise RuntimeError("Missing the comparison files used to validate results: " + str(one_end))
+    if source is None:
+        raise RuntimeError("Missing the resulting files from the dataset: " + str(one_end))
 
-if master is None:
-    raise RuntimeError("Missing the comparison files used to validate results")
-if source is None:
-    raise RuntimeError("Missing the resulting files from the dataset")
+    # Check file sizes
+    master_size = os.path.getsize(master)
+    source_size = os.path.getsize(source)
+    if master_size <= 0 and not source_size <= 0:
+        raise RuntimeError("Generated file is not empty like comparison file: " + source + " vs " + master)
+    if not master_size == 0:
+        diff = abs(master_size - source_size)
+        if not diff == 0 and float(diff)/float(master_size) > FILE_SIZE_MAX_DIFF_FRACTION:
+            raise RuntimeError("File size difference exceeds limit of " + FILE_SIZE_MAX_DIFF_FRACTION + ": " + source + " vs " + master)
+    if master_size == 0 or source_size == 0:
+        print("Success compare empty files (" + one_end + "): " + source + " vs " + master)
+        continue
 
-im_mas = cv2.imread(master)
-im_src = cv2.imread(source)
+    # Check file types
+    ext = os.path.splitext(master)
+    if not ext:
+        print("Success compare extension-less files (" + one_end + "): " + source + " vs " + master)
+        continue
 
-if im_mas is None:
-    print("Master image was not loaded: '" + master + "'")
-    exit(1)
-if im_src is None:
-    print("Dataset image was not loaded: '" + source + "'")
-    exit(1)
+    if not (ext == ".tif" or ext == "png"):
+        print("Success. No futher tests for files (" + one_end + "): " + source + " vs " + master)
+        continue
 
-# We use a dict so that we can add better error handling later if desired
-failures = {}
+    im_mas = cv2.imread(master)
+    im_src = cv2.imread(source)
 
-# Check the image attributes
-if not im_mas.shape == im_src.shape:
-    failures['image dimensions'] = True
+    if im_mas is None:
+        print("Master image was not loaded: '" + master + "'")
+        exit(1)
+    if im_src is None:
+        print("Dataset image was not loaded: '" + source + "'")
+        exit(1)
 
-if 'image dimensions' not in failures:
-    # calculate the differences between the images and check that
-    diff = np.absolute(np.subtract(im_mas, im_src))
-    hist, _ = np.histogram(diff, 256, (0, 255))
+    # We use a dict so that we can add better error handling later if desired
+    failures = {}
 
-    start_idx = HIST_START_INDEX if HIST_START_INDEX < hist.size else 0
-    for idx in range(start_idx, hist.size):
-        if hist[idx] > HIST_BIN_MAX:
-            failures['image differences'] = True
-            break
+    # Check the image attributes
+    if not im_mas.shape == im_src.shape:
+        failures['image dimensions'] = True
 
-# Report any errors back
-failures_len = len(failures)
-if failures_len > 0:
-    print("We have " + str(failures_len) + "errors detected")
-    errs = ', '.join(str(k) for k in failures.keys())
-    raise RuntimeError("Errors found: %s" % errs)
+    if 'image dimensions' not in failures:
+        # calculate the differences between the images and check that
+        diff = np.absolute(np.subtract(im_mas, im_src))
+        hist, _ = np.histogram(diff, 256, (0, 255))
+
+        start_idx = HIST_START_INDEX if HIST_START_INDEX < hist.size else 0
+        for idx in range(start_idx, hist.size):
+            if hist[idx] > HIST_BIN_MAX:
+                failures['image differences'] = True
+                break
+
+    # Report any errors back
+    failures_len = len(failures)
+    if failures_len > 0:
+        print("We have " + str(failures_len) + "errors detected for files (" + one_end + "): " + source + " vs " + master)
+        errs = ', '.join(str(k) for k in failures.keys())
+        raise RuntimeError("Errors found: %s" % errs)
 
 print("Test has run successfully")

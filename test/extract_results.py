@@ -17,6 +17,11 @@ fetch_ds_name = None
 argc = len(sys.argv)
 if argc > 1:
     fetch_ds_name = sys.argv[1]
+    fetch_ds_name_len = len(fetch_ds_name.strip())
+    if fetch_ds_name_len <= 0:
+        fetch_ds_name = None
+if not fetch_ds_name is None:
+    print("Fetching dataset: " + str(fetch_ds_name))
 
 # Get all the dataset names
 key = os.getenv("API_KEY")

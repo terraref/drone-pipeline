@@ -9,10 +9,10 @@ import time
 import datetime
 import subprocess
 
-SLEEP_SECONDS_ID = 5
-SLEEP_SECONDS_FINISH = 20
-CONTAINER_ID_LOOP_MAX = 10
-CONTAINER_FINISH_LOOP_MAX = 5000
+SLEEP_SECONDS_ID = 5            # Number of seconds to wait between attempts to get extractor's ID
+SLEEP_SECONDS_FINISH = 60       # Number of seconds to wait before chekcing if extractor is complete
+CONTAINER_ID_LOOP_MAX = 10      # How many times to loop while attempting to get the container's ID
+CONTAINER_FINISH_LOOP_MAX = 5000 # How many times to loop waiting for extractor to complete it's job
 
 CONTAINER_NAMED = os.getenv("DOCKER_NAMED_CONTAINER")
 
