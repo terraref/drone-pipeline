@@ -9,13 +9,13 @@ The clipped files are placed into a new dataset and organized by plot.
 Image pixel size is consistency maintained for all clipped images on a per-plot basis.
 
 A date value is used to organize the clipped files.
-By deffault the local machine date for when the clipping was started is used.
+By default the local machine date for when the clipping was started is used.
 To force the date to a certain value, include it in the shapefile name with a leading ' - ' separator.
 A trailing ' - ' separator is needed if the date is not the last part of the filename before the file extension.
-The date must use a four digit year format and either come first or last.
+The date must use a four digit year format and must come first.
 The day and month need to be two digits each.
-The placement of month and day in relation to each other is ignored: DD-MM-YYYY is as good as MM-DD-YYYY and YYYY-DD-MM.
-For example, "My Shapefile.shp" would become "My Shapefile - 2020-05-10.shp", or "My - 2020-05-10 - Shapefile.shp", or "My Shapefile - 05-10-2020.shp".
+The ISO-8601 standard is used for the format of the short date as follows; YYYY-MM-DD.
+For example, "My Shapefile.shp" would become "My Shapefile - 2020-05-10.shp".
 
 By default the plot images are organized by the plot sequence number that is actively clipping images.
 The naming of plots can be changed by specifying an associated .dbf file.

@@ -1,0 +1,6 @@
+.pylintrc
+.egg-info
+.Rhistory
+build
+dist
+

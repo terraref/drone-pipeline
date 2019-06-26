@@ -1,5 +1,7 @@
-FROM terraref/terrautils:1.4
-MAINTAINER Chris Schnaufer <schnaufer@email.arizona.edu>
+#FROM clowder/extractors-opendronemap
+FROM chrisatua/extractors:opendronemap
+
+MAINTAINER Chris Schnaufer <chris.schnaufer@email.arizona.edu>
 
 # Install any users
 RUN useradd -u 49044 extractor \
@@ -9,17 +11,15 @@ RUN useradd -u 49044 extractor \
 RUN chown -R extractor /home/extractor \
     && chgrp -R extractor /home/extractor 
 
-# install and upgrade packages
-RUN apt install -y imagemagick gdal-bin libgdal-dev
+#RUN curl --get https://raw.githubusercontent.com/GitHubRGI/geopackage-python/master/Tiling/gdal2tiles_parallel.py > gdal2tiles_parallel.py  && \
+#    mv gdal2tiles_parallel.py /home/extractor/gdal2tiles_parallel.py
 
-RUN pip install --upgrade pip 
+RUN pip install --upgrade pip && \
+    pip install -U numpy && \
+    pip install -U utm influxdb laspy && \
+    pip install --ignore-installed enum34 terrautils
 
-RUN pip install -U numpy && \
-    pip install -U dbfread && \
-    pip install gdal  && \
-    pip install --upgrade --ignore-installed enum34 terrautils
-
-# command to run when starting docker
+# Copy our source files
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
 
 USER extractor
@@ -32,5 +32,6 @@ CMD ["extractor"]
 # executed by entrypoint.sh
 ENV RABBITMQ_EXCHANGE="terra" \
     RABBITMQ_VHOST="%2F" \
-    RABBITMQ_QUEUE="terra.dronepipeline.clipbyshape" \
-    MAIN_SCRIPT="terra_clipbyshape.py"
+    RABBITMQ_QUEUE="terra.dronepipeline.opendronemap" \
+    MAIN_SCRIPT="terraref-opendronemap.py" \
+    PYTHONPATH="${PYTHONPATH}:/code"

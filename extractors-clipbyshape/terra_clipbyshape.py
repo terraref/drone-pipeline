@@ -31,7 +31,7 @@ if 'ua-mac' in STATIONS:
     if 'clipbyshape' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['clipbyshape'] = {'display': 'Shapefile Plot Clipper',
                                              'template': '{base}/{station}/Level_2_Plots/' + \
-                                                    '{sensor}/{date}/{timestamp}/{plot}/{filename}'
+                                                         '{sensor}/{date}/{timestamp}/{plot}/{filename}'
                                             }
 
 def find_all_plot_names(plot_name, column_names):
