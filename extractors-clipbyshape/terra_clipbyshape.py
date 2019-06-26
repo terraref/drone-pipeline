@@ -227,7 +227,7 @@ class ClipByShape(TerrarefExtractor):
             parameters(json): json object of the triggering message contents
         """
         self.start_message(resource)
-        super(ClipByShape, self).process_message(self, connector, host, secret_key, resource,
+        super(ClipByShape, self).process_message(connector, host, secret_key, resource,
                                                  parameters)
 
         # Handle any parameters
