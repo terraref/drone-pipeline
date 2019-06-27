@@ -5,12 +5,12 @@ from setuptools import setup, find_packages
 def description():
     """Description of package
     """
-    with open('readme.rst') as f:
+    with open('README.rst') as f:
          return f.read()
 
 setup(name='pipelineutils',
       packages=find_packages(),
-      version='1.0.3',
+      version='1.0.6',
       include_package_data=True,
       description='Drone pipeline workflow utilities',
       long_description=description(),

@@ -1,6 +1,6 @@
 # pipelineutils
 ## Done Pipeline Utilities
-Python library for pipeline methods
+Python library for drone pipeline specific modules and methods that are shared by multiple extractors
 
 ### pipelineutils.py
 * 
@@ -10,7 +10,7 @@ As needs arise this library will change to address those needs.
 This section lists the commands needed build and publish an updated library
 
 The following steps need to be done:
-1. Setup the build environment
+1. Setup the build envorinment
 2. Build the library
 3. Optional, install locally
 4. Push to PyPi
