@@ -8,9 +8,10 @@ import sys
 import json
 import requests
 
-clowder_uri = os.getenv("CLOWDER_HOST_URI", "http://localhost:9000")
+CLOWDER_URI = os.getenv("CLOWDER_HOST_URI", "http://localhost:9000")
+SPACE_ID = os.getenv("SPACE_ID")
 
-API_BASE = "%s/api" % (clowder_uri)
+API_BASE = "%s/api" % (CLOWDER_URI)
 
 # Get the name of the test dataset
 fetch_ds_name = None
@@ -28,7 +29,7 @@ key = os.getenv("API_KEY")
 KEY_PARAM = "key=%s" % (key)
 headers = {"accept": "application/json"}
 
-url = "%s/datasets?%s" % (API_BASE, KEY_PARAM)
+url = "%s/spaces/%s/datasets?%s" % (API_BASE, SPACE_ID, KEY_PARAM)
 res = requests.get(url, headers=headers)
 res.raise_for_status()
 
@@ -49,10 +50,10 @@ for ds in datasets:
 
         # Download and store each file in the dataset under the dataset name
         files = res.json()
-        print("Dataset files: " + str(files))
+        #print("Dataset files: " + str(files))
         ds_files = []
         for fn in files:
-            print("Fetching file: " + fn['filename'])
+            print("    Fetching file: " + fn['filename'])
             url = "%s/files/%s?%s" % (API_BASE, fn['id'], KEY_PARAM)
             res = requests.get(url, stream=True)
             res.raise_for_status()
@@ -71,4 +72,4 @@ for ds in datasets:
             ds_files.append(dest)
         return_ds[ds['name']] = ds_files
 
-print(json.dumps(return_ds))
+#print(json.dumps(return_ds))

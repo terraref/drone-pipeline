@@ -36,16 +36,11 @@ stages:
 matrix:
   include:
     - name: "OpenDroneMap Extractor"
-      env: EXTRACTOR_BRANCH=opendronemap TEST_SOURCE_ARCHIVE=odm_test_data.tar TEST_COMPARE_ARCHIVE=odm_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:opendronemap RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=rgb_.tif,thumb.tif,10pct.tif,10pct.png,.laz,shp_.shp,shp_.dbf,shp_.prj,shp_.shx,shp_.txt
+      env: EXTRACTOR_BRANCH=opendronemap EXTRACTOR_RUN_EXTRA_PARAMS= TEST_SOURCE_ARCHIVE=test/odm_test_data.tar TEST_COMPARE_ARCHIVE=test/odm_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:opendronemap RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=rgb_.tif,thumb.tif,10pct.tif,10pct.png,.laz,shp_.shp,shp_.dbf,shp_.prj,shp_.shx,shp_.txt RESULT_DATASET_FILTER= VALIDATION_PARAMS="-pixdiff=80" SILENCE_FOLDER_LISTING=
       if: branch = master OR branch = develop OR branch =~ /.*opendronemap.*/ OR branch =~ /.*odm.*/ OR branch =~ /.*travis.*/
-    #- name: "Clip By Shape Extractor"
-    #  env: EXTRACTOR_BRANCH=clipbyshape
-    #  env: TEST_SOURCE_ARCHIVE=clipbyshape_test_data.tar
-    #  env: TEST_COMPARE_ARCHIVE=clipbyshape_results.tar
-    #  env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:clipbyshape
-    #  env: RESULT_DATASET_NAME=
-    #  env: RESULT_DATASET_FILE_MATCH=
-    #  if: branch = master OR branch = develop OR branch =~ /.*clipbyshape.*/ OR branch =~ /.*travis.*/
+    - name: "Clip By Shape Extractor"
+      env: EXTRACTOR_BRANCH=clipbyshape EXTRACTOR_RUN_EXTRA_PARAMS="-e 'MOUNTED_PATHS={\"/home/extractor/sites\":\"/home/extractor/sites\"}'" TEST_SOURCE_ARCHIVE=gdrive:1_kYL1gSb1wmiokIYN3dgU8baVPS01R9K/clipbyshape_test_data.tar TEST_COMPARE_ARCHIVE=gdrive:1eCQhlNtMlKqB73REmbrSAWE4pDDXO9IM/clipbyshape_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:clipbyshape RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=.tif RESULT_DATASET_FILTER="- (.+?) -" VALIDATION_PARAMS= SILENCE_FOLDER_LISTING=true
+      if: branch = master OR branch = develop OR branch =~ /.*clipbyshape.*/ OR branch =~ /.*travis.*/
     #- name: "Canopy Cover Value Extractor"
     #  env: EXTRACTOR_BRANCH=canopycover
     #  env: TEST_SOURCE_ARCHIVE=canopycover_test_data.tar
@@ -53,6 +48,9 @@ matrix:
     #  env: EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:canopycover
     #  env: RESULT_DATASET_NAME=
     #  env: RESULT_DATASET_FILE_MATCH=
+    #  env: RESULT_DATASET_FILTER=
+    #  env: VALIDATION_PARAMS= 
+    #  env: SILENCE_FOLDER_LISTING=
     #  if: branch = master OR branch = develop OR branch =~ /.*canopycover.*/ OR branch =~ /.*travis.*/
 
 # Secure stuff: travis encrypt --com '<var>=<value>'
@@ -87,7 +85,6 @@ before_install:
   # Install common packages
   - echo "Installing packages"
   - pip install -U pyclowder
-  - pip install -U boxsdk
   # Extractor dependency installations
   - sudo apt install -y libjpeg-dev
   - sudo apt install -y libtiff-dev
@@ -112,6 +109,7 @@ install:
   - curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/authenticate/userpass?username=$TEST_CLOWDER_USERNAME&password=$TEST_CLOWDER_PASSWORD" -D headers.txt
   - USER_ID=`grep 'Set-Cookie:\ id' headers.txt | sed -r 's/Set-(.+);.*;.*/\1/'`
   - echo "USER ID:\ $USER_ID"
+  - sleep 5
   - export API_KEY=`curl -X POST -v -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/api/users/keys?name=testingkey" -H "$USER_ID" | sed -r 's/.*"key":"(.+)".*/\1/'`
   - echo "API KEY:\ $API_KEY"
 
@@ -126,11 +124,11 @@ before_script:
   - export CONTAINER_NAME="chrisatua/test:$EXTRACTOR_BRANCH"
   - echo "Tagging container as:\ $CONTAINER_NAME"
   - docker build -t $CONTAINER_NAME "./$BUILD_FOLDER"
-  - docker run --network clowder_clowder -e 'RABBITMQ_URI=amqp://rabbitmq/%2F' -e 'RABBITMQ_EXCHANGE=terra' -d "--name=$DOCKER_NAMED_CONTAINER" "$CONTAINER_NAME"
+  - docker run --network clowder_clowder -e 'RABBITMQ_URI=amqp://rabbitmq/%2F' -e 'RABBITMQ_EXCHANGE=terra' -d "--name=$DOCKER_NAMED_CONTAINER" $EXTRACTOR_RUN_EXTRA_PARAMS "$CONTAINER_NAME"
   - export EXTRACTOR_CLOWDER_NAME=`cat $BUILD_FOLDER/extractor_info.json | grep '\"name\"' | sed -r 's/\"name\"\:.*\"(.+)\",/\1/' | tr -d '[:space:]'`
   - echo "Found extractor name of:\ $EXTRACTOR_CLOWDER_NAME"
   - echo "Loading the data for the extractor test"
-  - ./test/extract.sh "test/$TEST_SOURCE_ARCHIVE"  # Uncompress the test files
+  - ./test/extract.sh "$TEST_SOURCE_ARCHIVE" "data" # Uncompress the test files into the data folder
   - ls -l ./data
   - ./test/update_yaml.sh "./data/experiment.yaml" "$SPACE_ID" "$TEST_CLOWDER_USERNAME" "$TEST_CLOWDER_PASSWORD"
   - cat ./data/experiment.yaml
@@ -147,16 +145,15 @@ script:
   - ./test/start_extract.py "$EXTRACTOR_CLOWDER_NAME" "$CLOWDER_HOST_URI/api/datasets/$DATASET_ID/extractions?key=$API_KEY"
   - docker exec -t clowder_rabbitmq_1 /opt/rabbitmq/escript/rabbitmq-diagnostics list_queues
   - echo "Waiting for extractor to finish and setting up for test result validation"
-  - ./test/wait_for_finish.py "$CONTAINER_NAME"
+  - travis_wait 30 ./test/wait_for_finish.py "$CONTAINER_NAME"
   - ./test/extract_results.py  "$RESULT_DATASET_NAME"      # get the results
-  - ./test/setup_comparables.sh "test/$TEST_COMPARE_ARCHIVE"  # setup any comparables
+  - ./test/extract.sh "$TEST_COMPARE_ARCHIVE" compare  # setup any comparables
   - echo "Running the validation of extractor produced data"
-  - ls -la
-  - ls -la ./datasets
-  - ls -la "./datasets/$TEST_DATASET_NAME"
-  - ls -la "./datasets/$RESULT_DATASET_NAME"
-  - ls -la ./compare
-  - ./test/validate_results.py  "$RESULT_DATASET_FILE_MATCH"    # verify the results
+  - /bin/bash -c '[[ -z "$SILENCE_FOLDER_LISTING" ]] && ls -la || echo "Skipping folder listing"'
+  - /bin/bash -c '[[ -z "$SILENCE_FOLDER_LISTING" ]] && ls -la ./datasets || echo "Skipping folder listing"'
+  - /bin/bash -c '[[ -z "$SILENCE_FOLDER_LISTING" ]] && [[ ! -z "$RESULT_DATASET_NAME" ]] && ls -la "./datasets/$RESULT_DATASET_NAME" || echo "Skipping folder listing"'
+  - /bin/bash -c '[[ -z "$SILENCE_FOLDER_LISTING" ]] && ls -la ./compare || echo "Skipping folder listing"'
+  - ./test/validate_results.py  "$RESULT_DATASET_FILE_MATCH" "$RESULT_DATASET_FILTER" $VALIDATION_PARAMS   # verify the results
 
 after_script:
   - echo "Deploying container after successful run"
