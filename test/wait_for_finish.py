@@ -69,7 +69,14 @@ for i in range(1, CONTAINER_FINISH_LOOP_MAX):
         cmd_res = subprocess.check_output(["/bin/bash", "-c", new_bash_cmd])
         res = cmd_res.decode("utf-8").strip()
         if res:
-            raise RuntimeError("Post-process check: container threw an exception: " + dockerizedName)
+            ### Temporary measure until Clowder 1.7 comes out
+            new_bash_cmd = "docker logs " + dockerId + " 2>&1 | grep '500 Server Error' || echo ' '"
+            cmd_res = subprocess.check_output(["/bin/bash", "-c", new_bash_cmd])
+            res = cmd_res.decode("utf-8").strip()
+            if res:
+                print("Ignoring server error due to Clowder bug to be fixed in version 1.7")
+            else:
+                raise RuntimeError("Post-process check: container threw an exception: " + dockerizedName)
         sys.exit(0)
     if "exit status" in res:
         print("Extractor status command exited with an error.")
@@ -80,7 +87,10 @@ for i in range(1, CONTAINER_FINISH_LOOP_MAX):
         print("Docker container appears to have thrown an unhandled exception")
         print("Partial results follow.")
         print(res)
-        raise RuntimeError("Container threw an exception: " + dockerizedName)
+        if "500 Server Error" in res:
+            print("Ignoring server error due to Clowder bug to be fixed in version 1.7")
+        else:
+            raise RuntimeError("Container threw an exception: " + dockerizedName)
     curtime = datetime.datetime.now()
     timedelta = curtime - starttime
     print("Sleep while waiting on container: " + str(timedelta.total_seconds()) + " elapsed seconds")
