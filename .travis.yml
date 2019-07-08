@@ -103,16 +103,9 @@ install:
   - echo "Starting Clowder configuration"
   - echo "Clowder URL:\ $CLOWDER_HOST_URI"
   - docker run -it --rm --network clowder_clowder -e "MONGO_URI=mongodb://mongo:27017/clowder" -e "FIRST_NAME=test" -e "LAST_NAME=test" -e "EMAIL_ADDRESS=$TEST_CLOWDER_USERNAME" -e "USERNAME=$TEST_CLOWDER_USERNAME" -e "PASSWORD=$TEST_CLOWDER_PASSWORD" -e "ADMIN=false" $MONGO_INIT_CONTAINER
-  #- curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/signup?email=$TEST_CLOWDER_USERNAME"
-  #- ./test/wait_for_registration.sh
-  #- URI=`sed -r 's/.*href="(.+)">.*/\1/' reg.txt`
-  #- echo "URI:\ $URI"
-  #- curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$URI?firstName=test&lastName=test&password.password1=$TEST_CLOWDER_PASSWORD&password.password2=$TEST_CLOWDER_PASSWORD&agreementAcknowledged=true"
-  #- curl -X POST -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/authenticate/userpass?username=$TEST_CLOWDER_USERNAME&password=$TEST_CLOWDER_PASSWORD" -D headers.txt
-  #- USER_ID=`grep 'Set-Cookie:\ id' headers.txt | sed -r 's/Set-(.+);.*;.*/\1/'`
-  #- echo "USER ID:\ $USER_ID"
+  - docker rmi $MONGO_INIT_CONTAINER  # Clean up the container to save space that night be needed
   - sleep 5
-  - export API_KEY=`curl -X POST -v -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/api/users/keys?name=testingkey" -H "$USER_ID" | sed -r 's/.*"key":"(.+)".*/\1/'`
+  - export API_KEY=`curl -X POST -v -H "Content-Type:application/x-www-form-urlencoded" "$CLOWDER_HOST_URI/api/users/keys?name=testingkey" -u "$TEST_CLOWDER_USERNAME:$TEST_CLOWDER_PASSWORD" | sed -r 's/.*"key":"(.+)".*/\1/'`
   - echo "API KEY:\ $API_KEY"
 
 # Setup the clowder environment
