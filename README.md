@@ -1,4 +1,5 @@
 # Drone Pipeline
+<img src="./resources/drone-pipeline.png" width="100" />
 
 Generalizing the TERRA REF pipelines for processing data from UAV's
 
@@ -6,6 +7,8 @@ Generalizing the TERRA REF pipelines for processing data from UAV's
 
 This project is leveraging the work done in the TERRA REF project to create a drone-specific processing pipeline for plant based analysis.
 It assumes you are familiar with [Clowder's](https://opensource.ncsa.illinois.edu/bitbucket/projects/CATS) concepts of extractors.
+
+We also have an separate GitHub project with a focus on the Drone Processing Pipeline as an independent entity at https://github.com/az-digitalag/Drone-Processing-Pipeline.
 
 ### Challenges
 
