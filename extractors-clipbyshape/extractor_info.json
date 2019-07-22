@@ -1,0 +1,18 @@
+{
+  "@context": "http://clowder.ncsa.illinois.edu/contexts/extractors.jsonld",
+  "name": "terra.dronepipeline.clipbyshape",
+  "version": "1.0",
+  "description": "Clips georeferenced images by shapefile",
+  "author": "Chris Schnaufer <schnaufer@email.arizona.edu>",
+  "contributors": [],
+  "contexts": [],
+  "repository": {"repType": "git", "repUrl": "https://github.com/terraref/drone-pipeline.git"},
+  "process": {
+    "dataset": [
+      "file.added"
+    ]
+  },
+  "external_services": [],
+  "dependencies": [],
+  "bibtex": []
+}
