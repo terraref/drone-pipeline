@@ -318,7 +318,8 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
         # Get the best username, password, and space
         old_un, old_pw, old_space = (self.clowder_user, self.clowder_pass, self.clowderspace)
-        self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context()
+        self.clowder_user, self.clowder_pass, self.clowderspace = \
+                                                    self.get_clowder_context(host, secret_key)
 
         # Ensure that the clowder information is valid
         if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
