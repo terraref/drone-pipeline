@@ -12,14 +12,13 @@ import json
 import gzip
 import shutil
 import logging
+import piexif
 
 from pyclowder.files import upload_metadata
 from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
      check_file_in_dataset, confirm_clowder_info, timestamp_to_terraref
 from terrautils.sensors import Sensors, STATIONS
-
-import piexif
 
 from opendm import config
 
@@ -43,9 +42,9 @@ if 'ua-mac' in STATIONS:
                                     }
 
 # EXIF tags to look for
-EXIF_ORIGIN_TIMESTAMP = "36867"         # Capture timestamp
-EXIF_TIMESTAMP_OFFSET = "36881"         # Timestamp UTC offset (general)
-EXIF_ORIGIN_TIMESTAMP_OFFSET = "36881"  # Capture timestamp UTC offset
+EXIF_ORIGIN_TIMESTAMP = 36867         # Capture timestamp
+EXIF_TIMESTAMP_OFFSET = 36881         # Timestamp UTC offset (general)
+EXIF_ORIGIN_TIMESTAMP_OFFSET = 36881  # Capture timestamp UTC offset
 
 # Deletes a folder tree and ensures the top level folder is deleted as well
 def check_delete_folder(folder):
