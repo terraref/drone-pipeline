@@ -363,12 +363,12 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                                         cur_dataset_id, resultfile, remove=False)
 
                 # If the files is already in the dataset, determine if we need to delete it first
-                if self.overwrite and file_in_dataset:
+                if self.overwrite_ok and file_in_dataset:
                     # Delete the file from the dataset before uploading the new copy
                     self.log_info(resource, "Removing existing file in dataset " + resultfile)
                     check_file_in_dataset(connector, host, secret_key, cur_dataset_id,
                                           resultfile, remove=True)
-                elif not self.overwrite and file_in_dataset:
+                elif not self.overwrite_ok and file_in_dataset:
                     # We won't overwrite an existing file
                     self.log_skip(resource, "Not overwriting existing file in dataset " + resultfile)
                     continue
@@ -487,7 +487,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                 full_exists = True
             if file_exists(out_png):
                 png_exists = True
-            if thumb_exists and med_exists and full_exists and not self.overwrite:
+            if thumb_exists and med_exists and full_exists and not self.overwrite_ok:
                 if  png_exists:
                     self.log_skip(resource, "all outputs already exist")
                     # Restore anything we need to before returning
