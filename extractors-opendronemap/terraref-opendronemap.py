@@ -4,8 +4,10 @@
 # pylint: disable=missing-docstring
 
 import os
+import sys
 import subprocess
 import tempfile
+import datetime
 import json
 import gzip
 import shutil
@@ -16,6 +18,8 @@ from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
      check_file_in_dataset, confirm_clowder_info, timestamp_to_terraref
 from terrautils.sensors import Sensors, STATIONS
+
+import piexif
 
 from opendm import config
 
@@ -38,6 +42,10 @@ if 'ua-mac' in STATIONS:
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.shp'
                                     }
 
+# EXIF tags to look for
+EXIF_ORIGIN_TIMESTAMP = "36867"         # Capture timestamp
+EXIF_TIMESTAMP_OFFSET = "36881"         # Timestamp UTC offset (general)
+EXIF_ORIGIN_TIMESTAMP_OFFSET = "36881"  # Capture timestamp UTC offset
 
 # Deletes a folder tree and ensures the top level folder is deleted as well
 def check_delete_folder(folder):
@@ -54,6 +62,68 @@ def check_delete_folder(folder):
             logging.debug("Execption deleting folder %s", folder)
             logging.debug("  %s", ex.message)
 
+def exif_tags_to_timestamp(exif_tags):
+    """Looks up the origin timestmp and a timestamp offset in the exit tags and returns
+       a datetime objext
+
+    Args:
+        exif_tags(dict): The exif tags to search for timestamp information
+
+    Return:
+        Returns the origin timestamp when found. The return timestamp is adjusted for UTF if
+        an offset is found. None is returned if a valid timestamp isn't found.
+    """
+    cur_stamp, cur_offset = (None, None)
+
+    def convert_and_clean_tag(value):
+        """Internal helper function for handling EXIF tag values. Tests for an empty string after
+           stripping colons, '+', '-', and whitespace [the spec is unclear if a +/- is needed when
+           the timestamp offset is unknown (and spaces are used)].
+        Args:
+            value(bytes or str): The tag value
+        Return:
+            Returns the cleaned up, and converted from bytes, string. Or None if the value is empty
+            after stripping above characters and whitespace.
+        """
+        if not value:
+            return None
+
+        # Convert bytes to string
+        if isinstance(value, bytes) and sys.version_info >= (3, 0):
+            value = value.decode('UTF-8').strip()
+        else:
+            value = value.strip()
+
+        # Check for an empty string after stripping colons
+        if value:
+            if not value.replace(":", "").replace("+:", "").replace("-", "").strip():
+                value = None
+
+        return None if not value else value
+
+    # Process the EXIF data
+    if EXIF_ORIGIN_TIMESTAMP in exif_tags:
+        cur_stamp = convert_and_clean_tag(exif_tags[EXIF_ORIGIN_TIMESTAMP])
+    if not cur_stamp:
+        return None
+
+    if EXIF_ORIGIN_TIMESTAMP_OFFSET in exif_tags:
+        cur_offset = convert_and_clean_tag(exif_tags[EXIF_ORIGIN_TIMESTAMP_OFFSET])
+    if not cur_offset and EXIF_TIMESTAMP_OFFSET in exif_tags:
+        cur_offset = convert_and_clean_tag(exif_tags[EXIF_TIMESTAMP_OFFSET])
+
+    # Format the string to a timestamp and return the result
+    try:
+        if not cur_offset:
+            cur_ts = datetime.datetime.strptime(cur_stamp, "%Y:%m:%d %H:%M:%S")
+        else:
+            cur_offset = cur_offset.replace(":", "")
+            cur_ts = datetime.datetime.strptime(cur_stamp + cur_offset, "%Y:%m:%d %H:%M:%S%z")
+    except Exception as ex:     # pylint: disable=broad-except
+        cur_ts = None
+        logging.debug(ex.message)
+
+    return cur_ts
 
 # Class for performing a full field mosaic stitching using Clowder's opendronemap extractor
 # This class is mostly a wrapper around the OpenDroneMapStitch extractor
@@ -107,6 +177,50 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         TerrarefExtractor.setup(self, sensor=self.sensor_name)
         OpenDroneMapStitch.dosetup(self, odm_args)
 
+    def find_timestamp(self, resource, text):
+        """Looks up a timestamp based upon EXIF data. Uses default mechanisms if a
+           timestamp can't be found.
+
+        Args:
+            resource(dict): dictionary containing the resources associated with the request
+            text(str): optional text string to search for a time stamp if we can't use EXIF data
+
+        Return:
+            A timestamp in ISO 8601 long format or None if one isn't found
+        """
+        # pylint: disable=too-many-nested-blocks
+        first_stamp = None
+        try:
+            # Get all the image files
+            paths = list()
+            for localfile in resource['local_paths']:
+                # deal with mounted/local files
+                if localfile.lower().endswith('.jpg'):
+                    paths.append(localfile)
+                else:
+                    # deal with downloaded files
+                    for image in resource['files']:
+                        if 'filepath' in image and image['filepath'] == localfile:
+                            if image['filename'].lower().endswith('.jpg'):
+                                paths.append(image['filename'])
+
+            # Find a timestamp to use by looking at EXIF data
+            for input_path in paths:
+                tags_dict = piexif.load(input_path)
+                if tags_dict and "Exif" in tags_dict:
+                    cur_stamp = exif_tags_to_timestamp(tags_dict["Exif"])
+                    if cur_stamp:
+                        first_stamp = cur_stamp if first_stamp is None or cur_stamp < first_stamp \
+                                                                                else first_stamp
+
+        except Exception as ex:     # pylint: disable=broad-except
+            logging.debug(ex.message)
+
+        if first_stamp:
+            return first_stamp.isoformat()
+
+        return super(ODMFullFieldStitcher, self).find_timestamp(text)
+
     # Called to see if we want the message
     # Hand it through to the OpenDroneMapStitch since it knows what it wants
     # pylint: disable=too-many-arguments
@@ -114,7 +228,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         """Explicitly calls through to our OpenDroneMapStitch parent instance
 
         Args:
-             connector(obj): the message queue connector instance
+            connector(obj): the message queue connector instance
             host(str): the URI of the host making the connection
             secret_key(str): used with the host API
             resource(dict): dictionary containing the resources associated with the request
@@ -298,8 +412,6 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             parameters = json.loads(parameters)
         if isinstance(parameters, unicode):
             parameters = json.loads(str(parameters))
-        #if 'parameters' in parameters:
-        #    parameters = parameters['parameters']
 
         # Array of files to upload once processing is done
         self.files_to_upload = []
@@ -313,7 +425,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         sensor_type = "rgb"
 
         # Initialize more local variables
-        dataset_name = parameters["datasetname"]
+        #dataset_name = parameters["datasetname"]
         scan_name = parameters["scan_type"] if "scan_type" in parameters else ""
 
         # Get the best username, password, and space
@@ -338,7 +450,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
         try:
             # Get the best timestamp
-            timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
+            timestamp = timestamp_to_terraref(self.find_timestamp(resource, resource['dataset_info']['name']))
             season_name, experiment_name, _ = self.get_season_and_experiment(timestamp,
                                                                              self.sensor_name)
 

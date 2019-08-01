@@ -11,12 +11,9 @@ RUN useradd -u 49044 extractor \
 RUN chown -R extractor /home/extractor \
     && chgrp -R extractor /home/extractor 
 
-#RUN curl --get https://raw.githubusercontent.com/GitHubRGI/geopackage-python/master/Tiling/gdal2tiles_parallel.py > gdal2tiles_parallel.py  && \
-#    mv gdal2tiles_parallel.py /home/extractor/gdal2tiles_parallel.py
-
-RUN pip install --upgrade pip && \
+RUN pip install -U pip && \
     pip install -U numpy && \
-    pip install -U utm influxdb laspy && \
+    pip install -U utm influxdb laspy piexif && \
     pip install --ignore-installed enum34 terrautils
 
 # Copy our source files
