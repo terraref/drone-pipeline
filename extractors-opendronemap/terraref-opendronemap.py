@@ -12,8 +12,10 @@ import json
 import gzip
 import shutil
 import logging
+import requests # for dsid_by_name()
 import piexif
 
+import pyclowder.datasets as ds
 from pyclowder.files import upload_metadata
 from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
@@ -60,6 +62,36 @@ def check_delete_folder(folder):
         except Exception as ex:
             logging.debug("Execption deleting folder %s", folder)
             logging.debug("  %s", ex.message)
+
+def dsid_by_name(host, key, name):
+    """Looks up the ID of a dataset by nanme
+
+    Args:
+        host(str): the URI of the host making the connection
+        key(str): used with the host API
+        name(str): the dataset name to look up
+
+    Return:
+        Returns the ID of the dataset if it's found. Returns None if the dataset
+        isn't found
+    """
+    url = "%sapi/datasets?key=%s&title=%s&exact=true" % (host, key, name)
+
+    try:
+        result = requests.get(url)
+        result.raise_for_status()
+
+        md = result.json()
+        md_len = len(md)
+    except Exception as ex:     # pylint: disable=broad-except
+        md = None
+        md_len = 0
+        logging.debug(ex.message)
+
+    if md and md_len > 0 and "id" in md[0]:
+        return md[0]["id"]
+
+    return None
 
 def exif_tags_to_timestamp(exif_tags):
     """Looks up the origin timestmp and a timestamp offset in the exit tags and returns
@@ -162,6 +194,33 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
     @property
     def sensor_name(self):
         return 'rgb_fullfield'
+
+    # pylint: disable=too-many-arguments
+    def update_dataset_extractor_metadata(self, connector, host, key, dsid, metadata,\
+                                          extractor_name):
+        """Adds or replaces existing dataset metadata for the specified extractor
+
+        Args:
+            connector(obj): the message queue connector instance
+            host(str): the URI of the host making the connection
+            key(str): used with the host API
+            dsid(str): the dataset to update
+            metadata(str): the metadata string to update the dataset with
+            extractor_name(str): the name of the extractor to associate the metadata with
+        """
+        meta = build_metadata(host, self.extractor_info, dsid, metadata, "dataset")
+
+        try:
+            md = ds.download_metadata(connector, host, key, dsid, extractor_name)
+            md_len = len(md)
+        except Exception as ex:     # pylint: disable=broad-except
+            md_len = 0
+            logging.debug(ex.message)
+
+        if md_len > 0:
+            ds.remove_metadata(connector, host, key, dsid, extractor_name)
+
+        ds.upload_metadata(connector, host, key, dsid, meta)
 
     # Called by OpenDroneMapStitch during the __init__ call
     # So we override it to make sure things happen the way we want them to
@@ -345,6 +404,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                              sensor=sensor_type)
 
                         sensor_leaf_name = new_sensor.get_display_name() + ' - ' + timestamp
+                        ds_exists = dsid_by_name(host, secret_key, sensor_leaf_name)
                         new_dsid = build_dataset_hierarchy_crawl(host, secret_key,
                                                                  self.clowder_user,
                                                                  self.clowder_pass,
@@ -354,6 +414,11 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                                                  timestamp[:4], timestamp[5:7],
                                                                  timestamp[8:10],
                                                                  leaf_ds_name=sensor_leaf_name)
+
+                        if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
+                            self.update_dataset_extractor_metadata(connector, host, secret_key,
+                                                                   new_dsid, self.experiment_metadata,
+                                                                   self.extractor_info['name'])
 
                         self.sensor_dsid_map[sensor_type] = new_dsid
                         cur_dataset_id = new_dsid
@@ -374,14 +439,14 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                     continue
 
                 # Upload the file to the dataset
-                dsid = upload_to_dataset(connector, host, self.clowder_user, self.clowder_pass,
-                                         cur_dataset_id, resultfile)
+                fid = upload_to_dataset(connector, host, self.clowder_user, self.clowder_pass,
+                                        cur_dataset_id, resultfile)
 
                 # Generate our metadata
-                meta = build_metadata(host, self.extractor_info, dsid, content, 'file')
+                meta = build_metadata(host, self.extractor_info, fid, content, 'file')
 
                 # Upload the meadata to the dataset
-                upload_metadata(connector, host, secret_key, dsid, meta)
+                upload_metadata(connector, host, secret_key, fid, meta)
 
                 self.created += 1
                 self.bytes += os.path.getsize(resultfile)
@@ -542,6 +607,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
             # Get dataset ID or create it, creating parent collections as needed
             leaf_ds_name = self.sensors.get_display_name() + ' - ' + timestamp
+            ds_exists = dsid_by_name(host, secret_key, leaf_ds_name)
             target_dsid = build_dataset_hierarchy_crawl(host, secret_key, self.clowder_user,
                                                         self.clowder_pass, self.clowderspace,
                                                         season_name, experiment_name,
@@ -549,6 +615,11 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                                         timestamp[:4], timestamp[5:7],
                                                         timestamp[8:10],
                                                         leaf_ds_name=leaf_ds_name)
+
+            if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
+                self.update_dataset_extractor_metadata(connector, host, secret_key, target_dsid,
+                                                       self.experiment_metadata,
+                                                       self.extractor_info['name'])
 
             # Store our dataset mappings for possible later use
             self.sensor_dsid_map = {sensor_type : target_dsid}
@@ -561,7 +632,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             content = {
                 "comment": "This stitched file is computed using OpenDroneMap. Change the" \
                            " parameters in extractors-opendronemap.txt to change the results.",
-                "file_ids": ", ".join(file_ids)
+                "source_file_ids": ", ".join(file_ids)
             }
 
             # If we newly created these files, upload to Clowder
