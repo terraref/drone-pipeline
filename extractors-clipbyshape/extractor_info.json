@@ -6,7 +6,7 @@
   "author": "Chris Schnaufer <schnaufer@email.arizona.edu>",
   "contributors": [],
   "contexts": [],
-  "repository": {"repType": "git", "repUrl": "https://github.com/terraref/drone-pipeline.git"},
+  "repository": [{"repType": "git", "repUrl": "https://github.com/terraref/drone-pipeline.git"}],
   "process": {
     "dataset": [
       "file.added"
