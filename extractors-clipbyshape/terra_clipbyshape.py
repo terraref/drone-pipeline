@@ -7,6 +7,7 @@ import os
 import json
 import logging
 import osr
+import unicodedata
 
 from osgeo import ogr
 from numpy import nan
@@ -21,7 +22,7 @@ from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clo
      timestamp_to_terraref
 from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
-from terrautils.imagefile import file_is_image_type, image_get_geobounds, polygon_to_tuples, \
+from terrautils.imagefile import file_is_image_type, image_get_geobounds, \
      polygon_to_tuples_transform, get_epsg
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
@@ -190,9 +191,7 @@ class ClipByShape(TerrarefExtractor):
                             else:
                                 poly.AssignSpatialReference(ref_sys)
 
-                            # pylint: disable=line-too-long
                             imagefiles[onefile] = {'bounds' : poly}
-                            # pylint: enable=line-too-long
 
         # Return what we've found
         return (shapefile, shxfile, dbffile, imagefiles)
@@ -314,7 +313,10 @@ class ClipByShape(TerrarefExtractor):
 
             # Load the shapes and find the plot name column if we have a DBF file
             shape_in = ogr.Open(shapefile)
-            layer = shape_in.GetLayer(os.path.split(os.path.splitext(shapefile)[0])[1])
+            layer_name = os.path.split(os.path.splitext(shapefile)[0])[1]
+            if isinstance(layer_name, unicode):
+                layer_name = layer_name.encode('ascii','ignore')
+            layer = shape_in.GetLayer(layer_name)
             feature = layer.GetNextFeature()
             layer_ref = layer.GetSpatialRef()
 
@@ -355,7 +357,6 @@ class ClipByShape(TerrarefExtractor):
             # Loop through each polygon and extract plot level data
             alternate_plot_id = 0
             while feature:
-
                 # Current geometry to extract
                 plot_poly = feature.GetGeometryRef()
                 if layer_ref:
@@ -420,13 +421,16 @@ class ClipByShape(TerrarefExtractor):
                         self.log_info(resource, "Skipping image: "+filename)
                         continue
 
+                    self.log_info(resource, "Attempting to clip '" + filename +
+                                  "' to polygon number " + str(alternate_plot_id))
+
                     # Determine where we're putting the clipped file on disk and determine overwrite
                     # pylint: disable=unexpected-keyword-arg
                     out_file = self.sensors.create_sensor_path(timestamp,
                                                                filename=os.path.basename(filename),
                                                                plot=plot_name,
                                                                subsensor=self.sensor_name)
-                    if (file_exists(out_file) and not self.overwrite):
+                    if (file_exists(out_file) and not self.overwrite_ok):
                         # The file exists and don't want to overwrite it
                         self.logger.warn("Skipping existing output file: %s", out_file)
                         continue
@@ -448,8 +452,8 @@ class ClipByShape(TerrarefExtractor):
 
                     # Upload the clipped image to the dataset
                     found_in_dest = check_file_in_dataset(connector, host, secret_key, target_dsid,
-                                                          out_file, remove=self.overwrite)
-                    if not found_in_dest or self.overwrite:
+                                                          out_file, remove=self.overwrite_ok)
+                    if not found_in_dest or self.overwrite_ok:
                         image_name = os.path.basename(filename)
                         content = {
                             "comment": "Clipped from shapefile " + os.path.basename(shapefile),

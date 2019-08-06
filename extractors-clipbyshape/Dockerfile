@@ -1,4 +1,4 @@
-FROM terraref/terrautils:1.4
+FROM terraref/terrautils:1.5
 MAINTAINER Chris Schnaufer <schnaufer@email.arizona.edu>
 
 # Install any users
@@ -16,6 +16,7 @@ RUN pip install --upgrade pip
 
 RUN pip install -U numpy && \
     pip install -U dbfread && \
+    pip install -U pyclowder && \
     pip install gdal  && \
     pip install --upgrade --ignore-installed enum34 terrautils
 
