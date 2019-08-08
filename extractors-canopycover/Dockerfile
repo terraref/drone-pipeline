@@ -1,5 +1,5 @@
-FROM terraref/terrautils:1.4
-MAINTAINER Chris Schnaufer <schnaufer@email.arizona.edu>
+FROM terraref/terrautils:1.5
+LABEL maintainer="Chris Schnaufer <schnaufer@email.arizona.edu>"
 
 # Install any users
 RUN useradd -u 49044 extractor \
@@ -17,9 +17,9 @@ RUN pip install --upgrade pip
 
 RUN pip install --upgrade numpy && \
     pip install --upgrade dbfread && \
+    pip install --upgrade pyclowder && \
     pip install gdal  && \
     pip install --upgrade --ignore-installed enum34 terrautils && \
-    pip install --upgrade terraref-stereo-rgb
 
 # command to run when starting docker
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/

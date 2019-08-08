@@ -1,27 +1,28 @@
 #!/usr/bin/env python
 
-'''Extractor for calculating canopy cover by plot plots via a shapefile
+'''Extractor for calculating canopy cover by plot plots
 '''
 
 import os
 import json
 import logging
+import math
+import random
+import time
 import requests
 import osr
+import numpy as np
+import gdal
 
 from osgeo import ogr
-from numpy import nan, rollaxis
-from dbfread import DBF
 
 import pyclowder.datasets as clowder_dataset
 from pyclowder.utils import CheckMessage
 
 from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clowder_info, \
-     upload_to_dataset, timestamp_to_terraref
+     timestamp_to_terraref
 from terrautils.sensors import STATIONS
-from terrautils.spatial import clip_raster
-from terrautils.imagefile import file_is_image_type, image_get_geobounds, \
-     polygon_to_tuples_transform, get_epsg
+from terrautils.imagefile import file_is_image_type, image_get_geobounds, get_epsg
 
 import terraref.stereo_rgb
 
@@ -30,10 +31,16 @@ import terraref.stereo_rgb
 # without many code changes
 if 'ua-mac' in STATIONS:
     if 'canopybyshape' not in STATIONS['ua-mac']:
-        STATIONS['ua-mac']['canopybyshape'] = {'template': '{base}/{station}/Level_2/' + \
+        STATIONS['ua-mac']['canopybyshape'] = {'template': '{base}/{station}/Level_3/' + \
                                                            '{sensor}/{date}/{timestamp}/{filename}',
                                                'pattern': '{sensor}_L3_{station}_{date}{opts}.csv',
                                               }
+
+# Number of tries to open a CSV file before we give up
+MAX_CSV_FILE_OPEN_TRIES = 10
+
+# Maximum number of seconds a single wait for file open can take
+MAX_FILE_OPEN_SLEEP_SEC = 30
 
 # Array of trait names that should have array values associated with them
 TRAIT_NAME_ARRAY_VALUE = ['canopy_cover', 'site']
@@ -42,11 +49,82 @@ TRAIT_NAME_ARRAY_VALUE = ['canopy_cover', 'site']
 TRAIT_NAME_MAP = {
     'access_level': '2',
     'species': 'Unknown',
-    'citation_author': '"Zongyang, Li; Schnaufer, Christophe"',
-    'citation_year': '2016; 2019',
+    'citation_author': '"Zongyang, Li"',
+    'citation_year': '2016',
     'citation_title': 'Maricopa Field Station Data and Metadata',
-    'method': 'Canopy Cover Estimation from RGB image using plot shapefile'
+    'method': 'Canopy Cover Estimation from RGB images'
 }
+
+RANDOM_GENERATOR = None
+
+def _get_plot_name(name):
+    """Looks in the parameter and returns a plot name.
+
+       Expects the plot name to be identified by having "By Plot" embedded in the name.
+       The plot name is then surrounded by " - " characters. That valus is then returned.
+
+    Args:
+        name(iterable or string): An array/list of names or a single name string
+
+    Return:
+        Returns the found plot name or an empty string.
+    """
+    if isinstance(name, str):
+        name = [name]
+
+    plot_signature = "by plot"
+    plot_separator = " - "
+    # Loop through looking for a plot identifier (case insensitive)
+    for one_name in name:
+        low_name = one_name.lower()
+        if plot_signature in low_name:
+            parts = low_name.split(plot_separator)
+            parts_len = len(parts)
+            if parts_len > 1:
+                return parts[1]
+
+    return ""
+
+def _get_open_backoff(prev=None):
+    """Returns the number of seconds to backoff from opening a file
+
+    Args:
+        prev(int or float): the previous return value from this function
+
+    Return:
+        Returns the number of seconds (including fractional seconds) to wait
+
+    Note that the return value is deterministic, and always the same, when None is
+    passed in
+    """
+    # pylint: disable=global-statement
+    global RANDOM_GENERATOR
+    global MAX_FILE_OPEN_SLEEP_SEC
+
+    # Simple case
+    if prev is None:
+        return 1
+
+    # Get a random number generator
+    if RANDOM_GENERATOR is None:
+        try:
+            RANDOM_GENERATOR = random.SystemRandom()
+        finally:
+            # Set this so we don't try again
+            RANDOM_GENERATOR = 0
+
+    # Get a random number
+    if RANDOM_GENERATOR:
+        multiplier = RANDOM_GENERATOR.random()
+    else:
+        multiplier = random.random()
+
+    # Calculate how long to sleep
+    sleep = math.trunc(float(prev) * multiplier * 100) / 10.0
+    if sleep > MAX_FILE_OPEN_SLEEP_SEC:
+        sleep = max(0.1, math.trunc(multiplier * 100) / 10)
+
+    return sleep
 
 def get_fields():
     """Returns the supported field names as a list
@@ -62,6 +140,10 @@ def get_default_trait(trait_name):
         If the default value for a trait is configured, that value is returned. Otherwise
         an empty string is returned.
     """
+    # pylint: disable=global-statement
+    global TRAIT_NAME_ARRAY_VALUE
+    global TRAIT_NAME_MAP
+
     if trait_name in TRAIT_NAME_ARRAY_VALUE:
         return []
     elif trait_name in TRAIT_NAME_MAP:
@@ -103,59 +185,7 @@ def generate_traits_list(traits):
 
     return trait_list
 
-def find_all_plot_names(plot_name, column_names):
-    """Returns whether or not all the plot names are found in
-       the list of column names.
-    Args:
-        plot_name(str or list): the plot column name to look for, or an array of plot column names
-        column_names(list): a list of names to look through for matches
-    Return:
-        Returns True if the plot names are all found in the column names list
-    """
-    if not plot_name:
-        return False
-
-    found_all = True
-    if isinstance(plot_name, list):
-        for one_idx in plot_name:
-            if not one_idx in column_names:
-                found_all = False
-                break
-    elif not plot_name in column_names:
-        found_all = False
-    else:
-        found_all = False
-
-    return found_all
-
-def get_plot_name(name_idx, data):
-    """Returns the plot name taken from the data parameter
-    Args:
-        name_idx(str or list): the plot column name to look for, or an array of plot names
-        data(obj): index-able object containing the values that make up the plot name
-    Return:
-        Returns the found plot name or None if not found
-    Note:
-        If the plot name consists of more than one index, the values are concatenated
-        to make up the returned plot name. Indexes that are missing in the data are
-        ignored. If the data doesn't contain any of the indexes, None is returned
-    """
-    plot_name = ""
-
-    if isinstance(name_idx, list):
-        for idx in name_idx:
-            if idx in data:
-                plot_name += str(data[idx]) + "_"
-        plot_name = plot_name.rstrip("_")
-    elif name_idx in data:
-        plot_name = str(data[name_idx])
-
-    if plot_name == "":
-        plot_name = None
-
-    return plot_name
-
-# The class for determining canopy cover from shapefile
+# The class for determining canopy cover from an RGB image
 class CanopyCover(TerrarefExtractor):
     """Extractor for clipping georeferenced images to plot boundaries via a shape file
 
@@ -192,17 +222,14 @@ class CanopyCover(TerrarefExtractor):
 
     # Look through the file list to find the files we need
     # pylint: disable=too-many-locals,too-many-nested-blocks
-    def find_shape_image_files(self, files, triggering_file):
+    def find_image_files(self, files):
         """Finds files that are needed for extracting plots from an orthomosaic
 
         Args:
             files(list): the list of file to look through and access
-            triggering_file(str): optional parameter specifying the file that triggered the
-            extraction
 
         Returns:
-            Returns a list containing the shapefile name, its optional associated DBF file,
-            and a dict of georeferenced image files (indexed by filename and containing an
+            Returns a dict of georeferenced image files (indexed by filename and containing an
             object with the calculated image bounds as an ogr polygon and a list of the
             bounds as a tuple)
 
@@ -216,53 +243,38 @@ class CanopyCover(TerrarefExtractor):
             The bounds tuple contains the min and max Y point values, followed by the min and
             max X point values.
         """
-        shapefile, shxfile, dbffile = None, None, None
         imagefiles = {}
 
         for onefile in files:
-            if onefile.endswith(".shp") and shapefile is None:
-                # We give priority to the shapefile that triggered the extraction over any other
-                # shapefiles that may exist
-                if triggering_file is None or triggering_file.endswith(onefile):
-                    shapefile = onefile
+            ext = os.path.splitext(os.path.basename(onefile))[1].lstrip('.')
+            if not ext in self.known_non_image_ext:
+                if file_is_image_type(self.args.identify_binary, onefile,
+                                      onefile + self.file_infodata_file_ending):
+                    # If the file has a geo shape we store it for clipping
+                    bounds = image_get_geobounds(onefile)
+                    epsg = get_epsg(onefile)
+                    if bounds[0] != np.nan:
+                        ring = ogr.Geometry(ogr.wkbLinearRing)
+                        ring.AddPoint(bounds[2], bounds[1])     # Upper left
+                        ring.AddPoint(bounds[3], bounds[1])     # Upper right
+                        ring.AddPoint(bounds[3], bounds[0])     # lower right
+                        ring.AddPoint(bounds[2], bounds[0])     # lower left
+                        ring.AddPoint(bounds[2], bounds[1])     # Closing the polygon
 
-                    filename_test = os.path.splitext(shapefile)[0] + ".shx"
-                    if os.path.isfile(filename_test):
-                        shxfile = filename_test
+                        poly = ogr.Geometry(ogr.wkbPolygon)
+                        poly.AddGeometry(ring)
 
-                    filename_test = os.path.splitext(shapefile)[0] + ".dbf"
-                    if os.path.isfile(filename_test):
-                        dbffile = filename_test
-            else:
-                ext = os.path.splitext(os.path.basename(onefile))[1].lstrip('.')
-                if not ext in self.known_non_image_ext:
-                    if file_is_image_type(self.args.identify_binary, onefile,
-                                          onefile + self.file_infodata_file_ending):
-                        # If the file has a geo shape we store it for clipping
-                        bounds = image_get_geobounds(onefile)
-                        epsg = get_epsg(onefile)
-                        if bounds[0] != nan:
-                            ring = ogr.Geometry(ogr.wkbLinearRing)
-                            ring.AddPoint(bounds[2], bounds[1])     # Upper left
-                            ring.AddPoint(bounds[3], bounds[1])     # Upper right
-                            ring.AddPoint(bounds[3], bounds[0])     # lower right
-                            ring.AddPoint(bounds[2], bounds[0])     # lower left
-                            ring.AddPoint(bounds[2], bounds[1])     # Closing the polygon
+                        ref_sys = osr.SpatialReference()
+                        if ref_sys.ImportFromEPSG(int(epsg)) != ogr.OGRERR_NONE:
+                            logging.error("Failed to import EPSG %s for image file %s",
+                                          str(epsg), onefile)
+                        else:
+                            poly.AssignSpatialReference(ref_sys)
 
-                            poly = ogr.Geometry(ogr.wkbPolygon)
-                            poly.AddGeometry(ring)
-
-                            ref_sys = osr.SpatialReference()
-                            if ref_sys.ImportFromEPSG(int(epsg)) != ogr.OGRERR_NONE:
-                                logging.error("Failed to import EPSG %s for image file %s",
-                                              str(epsg), onefile)
-                            else:
-                                poly.AssignSpatialReference(ref_sys)
-
-                            imagefiles[onefile] = {'bounds' : poly}
+                        imagefiles[onefile] = {'bounds' : poly}
 
         # Return what we've found
-        return (shapefile, shxfile, dbffile, imagefiles)
+        return imagefiles
 
     # Make a best effort to get a dataset ID
     # pylint: disable=no-self-use
@@ -310,6 +322,68 @@ class CanopyCover(TerrarefExtractor):
 
         return None
 
+    def write_csv_file(self, resource, filename, header, data):
+        """Attempts to write out the data to the specified file. Will write the
+           header information if it's the first call to write to the file.
+
+           If the file is not available, it waits as configured until it becomes
+           available, or returns an error.
+
+           Args:
+                resource(dict): dictionary containing the resources associated with the request
+                filename(str): path to the file to write to
+                header(str): Optional CSV formatted header to write to the file; can be set to None
+                data(str): CSV formatted data to write to the file
+
+            Return:
+                Returns True if the file was written to and False otherwise
+        """
+        # pylint: disable=global-statement
+        global MAX_CSV_FILE_OPEN_TRIES
+
+        if not resource or not filename or not data:
+            self.log_error(resource, "Empty parameter passed to write_geo_csv")
+            return False
+
+        csv_file = None
+        backoff_secs = None
+        for tries in range(0, MAX_CSV_FILE_OPEN_TRIES):
+            try:
+                csv_file = open(filename, 'w+')
+            except Exception as ex:     # pylint: disable=broad-except
+                pass
+
+            # If we can't open the file, back off and try again (unless it's our last try)
+            if tries < MAX_CSV_FILE_OPEN_TRIES - 1:
+                backoff_secs = _get_open_backoff(backoff_secs)
+                self.log_info(resource, "Sleeping for " + str(backoff_secs) + \
+                                                " seconds before trying to open CSV file again")
+                time.sleep(backoff_secs)
+
+        if not csv_file:
+            self.log_error(resource, "Unable to open CSV file for writing: '" + filename + "'")
+            self.log_error(resource, "Exception: " + str(ex))
+            return False
+
+        wrote_file = False
+        try:
+            # Check if we need to write a header
+            if os.fstat(csv_file.fileno()).st_size <= 0:
+                csv_file.write(header)
+
+            # Write out data
+            csv_file.write(data)
+
+            wrote_file = True
+        except Exception as ex:     # pylint: disable=broad-except
+            self.log_error(resource, "Exception while writing CSV file: '" + filename + "'")
+            self.log_error(resource, "Exception: " + str(ex))
+        finally:
+            csv_file.close()
+
+        # Return whether or not we wrote to the file
+        return wrote_file
+
     # Entry point for checking how message should be handled
     # pylint: disable=too-many-arguments
     def check_message(self, connector, host, secret_key, resource, parameters):
@@ -332,14 +406,7 @@ class CanopyCover(TerrarefExtractor):
                 if ('parent' in resource) and ('id' in resource['parent']):
                     dataset_id = resource['parent']['id']
             if dataset_id:
-                files = clowder_dataset.get_file_list(connector, host, secret_key, dataset_id)
-                have_shapefile = False
-                for one_file in files:
-                    if one_file['filename'].endswith('.shp'):
-                        have_shapefile = True
-                        break
-                if have_shapefile is True:
-                    return CheckMessage.download
+                return CheckMessage.download
 
         return CheckMessage.ignore
 
@@ -356,31 +423,23 @@ class CanopyCover(TerrarefExtractor):
             parameters(json): json object of the triggering message contents
         """
         self.start_message(resource)
-        super(CanopyCover, self).process_message(self, connector, host, secret_key, resource, parameters)
+        super(CanopyCover, self).process_message(connector, host, secret_key, resource, parameters)
 
         # Handle any parameters
         if isinstance(parameters, basestring):
             parameters = json.loads(parameters)
-        if isinstance(parameters, unicode):
-            parameters = json.loads(str(parameters))
+        elif isinstance(parameters, unicode):
+            parameters = json.loads(parameters.decode("utf-8", errors="replace"))
 
         # Initialize local variables
         dataset_name = parameters["datasetname"]
-        datestamp, shape_table, plot_name_idx, shape_rows = None, None, None, None
+        experiment_name = "Unknown Experiment"
+        datestamp = None
         citation_auth_override, citation_title_override, citation_year_override = None, None, None
         config_specie = None
 
         # Find the files we're interested in
-        # pylint: disable=line-too-long
-        (shapefile, shxfile, dbffile, imagefiles) = self.find_shape_image_files(resource['local_paths'],
-                                                                                resource['triggering_file'])
-        # pylint: enable=line-too-long
-        if shapefile is None:
-            self.log_skip(resource, "No shapefile found")
-            return
-        if shxfile is None:
-            self.log_skip(resource, "No SHX file found")
-            return
+        imagefiles = self.find_image_files(resource['local_paths'])
         num_image_files = len(imagefiles)
         if num_image_files <= 0:
             self.log_skip(resource, "No image files with geographic boundaries found")
@@ -412,6 +471,11 @@ class CanopyCover(TerrarefExtractor):
             self.sensors.base = new_base
 
         try:
+            # Get the best timestamp
+            datestamp = self.find_datestamp(dataset_name)
+            timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
+            _, experiment_name, _ = self.get_season_and_experiment(timestamp, self.sensor_name)
+
             # Build up a list of image IDs
             image_ids = {}
             if 'files' in resource:
@@ -422,17 +486,9 @@ class CanopyCover(TerrarefExtractor):
                                                             (image_name == res_file['filename']):
                             image_ids[image_name] = res_file['id']
 
-            # Get timestamps
-            datestamp = self.find_datestamp(dataset_name)
-            timestamp = timestamp_to_terraref(self.find_timestamp(dataset_name))
-
             if self.experiment_metadata:
-                # pylint: disable=line-too-long
                 if 'extractors' in self.experiment_metadata:
                     extractor_json = self.experiment_metadata['extractors']
-                    if 'shapefile' in extractor_json:
-                        if 'plot_column_name' in extractor_json['shapefile']:
-                            plot_name_idx = extractor_json['shapefile']['plot_column_name']
                     if 'canopyCover' in extractor_json:
                         if 'citationAuthor' in extractor_json['canopyCover']:
                             citation_auth_override = extractor_json['canopyCover']['citationAuthor']
@@ -440,72 +496,28 @@ class CanopyCover(TerrarefExtractor):
                             citation_year_override = extractor_json['canopyCover']['citationYear']
                         if 'citationTitle' in extractor_json['canopyCover']:
                             citation_title_override = extractor_json['canopyCover']['citationTitle']
-                # pylint: enable=line-too-long
+
                 if 'germplasmName' in self.experiment_metadata:
                     config_specie = self.experiment_metadata['germplasmName']
-
-            # Check our current local variables
-            if dbffile is None:
-                self.log_info(resource, "DBF file not found, using default plot naming")
-            self.log_info(resource, "Extracting plots using shapefile '" + \
-                                                        os.path.basename(shapefile) + "'")
-
-            # Load the shapes and find the plot name column if we have a DBF file
-            shape_in = ogr.Open(shapefile)
-            layer = shape_in.GetLayer(os.path.split(os.path.splitext(shapefile)[0])[1])
-            feature = layer.GetNextFeature()
-            layer_ref = layer.GetSpatialRef()
-
-            if dbffile:
-                shape_table = DBF(dbffile, lowernames=True, ignore_missing_memofile=True)
-                shape_rows = iter(list(shape_table))
-
-                # Make sure if we have the column name of plot-names specified that it exists in
-                # the shapefile
-                column_names = shape_table.field_names
-                if not plot_name_idx is None:
-                    if not find_all_plot_names(plot_name_idx, column_names):
-                        ValueError(resource, "Shapefile data does not have specified plot name" +
-                                   " column '" + plot_name_idx + "'")
-
-                # Lookup a plot name field to use
-                if plot_name_idx is None:
-                    for one_name in column_names:
-                        # pylint: disable=line-too-long
-                        if one_name == "observationUnitName":
-                            plot_name_idx = one_name
-                            break
-                        elif (one_name.find('plot') >= 0) and ((one_name.find('name') >= 0) or one_name.find('id')):
-                            plot_name_idx = one_name
-                            break
-                        elif one_name == 'id':
-                            plot_name_idx = one_name
-                            break
-                        # pylint: enable=line-too-long
-                if plot_name_idx is None:
-                    ValueError(resource, "Shapefile data does not have a plot name field '" +
-                               os.path.basename(dbffile) + "'")
 
             # Setup for the extracted plot canopy cover
             sensor_name = "canopybyshape"
 
             # Create the output files
-            base_name = os.path.basename(imagefiles.keys()[0])
-            rootdir = self.sensors.create_sensor_path(timestamp, sensor=sensor_name, ext=".csv")
-            out_csv = os.path.join(os.path.dirname(rootdir),
-                                   base_name.replace(".tif", "_canopycover_shapefile.csv"))
-            out_geo = os.path.join(os.path.dirname(rootdir),
-                                   base_name.replace(".tif", "_canopycover_geo.csv"))
+            rootdir = self.sensors.create_sensor_path(timestamp, sensor=sensor_name, ext=".csv",
+                                                      opts=[experiment_name])
+            out_csv = os.path.splitext(rootdir)[0] + "_canopycover.csv"
+            out_geo = os.path.splitext(rootdir)[0] + "_canopycover_geo.csv"
 
             self.log_info(resource, "Writing Shapefile CSV to %s" % out_csv)
-            csv_file = open(out_csv, 'w')
+            #csv_file = open(out_csv, 'w')
             (fields, traits) = get_traits_table()
-            csv_file.write(','.join(map(str, fields)) + '\n')
+            #csv_file.write(','.join(map(str, fields)) + '\n')
 
             self.log_info(resource, "Writing Geostreams CSV to %s" % out_geo)
-            geo_file = open(out_geo, 'w')
-            geo_file.write(','.join(['site', 'trait', 'lat', 'lon', 'dp_time',
-                                     'source', 'value', 'timestamp']) + '\n')
+            #geo_file = open(out_geo, 'w')
+            #geo_file.write(','.join(['site', 'trait', 'lat', 'lon', 'dp_time',
+            #                         'source', 'value', 'timestamp']) + '\n')
 
             # Setup default trait values
             if not config_specie is None:
@@ -519,137 +531,83 @@ class CanopyCover(TerrarefExtractor):
             else:
                 traits['citation_year'] = datestamp[:4]
 
-            # Loop through each polygon and extract plot level data
-            alternate_plot_id = 0
-            while feature:
+            # Loop through all the images (of which there should be one - see above)
+            for filename in imagefiles:
 
-                # Current geometry to extract
-                plot_poly = feature.GetGeometryRef()
-                if layer_ref:
-                    plot_poly.AssignSpatialReference(layer_ref)
-                plot_spatial_ref = plot_poly.GetSpatialReference()
+                try:
+                    cc_val = ""
 
-                # Determie the plot name to use
-                plot_name = None
-                alternate_plot_id = alternate_plot_id + 1
-                if shape_rows and plot_name_idx:
-                    try:
-                        row = next(shape_rows)
-                        plot_name = get_plot_name(plot_name_idx, row)
-                    except StopIteration:
-                        pass
-                if not plot_name:
-                    plot_name = "plot_" + str(alternate_plot_id)
+                    # Load the pixels
+                    clip_pix = np.array(gdal.Open(filename).ReadAsArray())
 
-                # Loop through all the images looking for overlap
-                for filename in imagefiles:
+                    # Get additional, necessary data
+                    centroid = imagefiles[filename]["bounds"].Centroid()
+                    plot_name = _get_plot_name([resource['dataset_info']['name'], dataset_name])
 
-                    # Get the bounds. We also get the reference systems in case we need to convert
-                    # between them
-                    bounds = imagefiles[filename]['bounds']
-                    bounds_spatial_ref = bounds.GetSpatialReference()
+                    cc_val = terraref.stereo_rgb.calculate_canopycover(np.rollaxis(clip_pix, 0, 3))
 
-                    # Checking for geographic overlap and skip if there is none
-                    if not bounds_spatial_ref.IsSame(plot_spatial_ref):
-                        # We need to convert coordinate system before an intersection
-                        transform = osr.CoordinateTransformation(bounds_spatial_ref,
-                                                                 plot_spatial_ref)
-                        new_bounds = bounds.Clone()
-                        if new_bounds:
-                            new_bounds.Transform(transform)
-                            intersection = plot_poly.Intersection(new_bounds)
-                            new_bounds = None
-                    else:
-                        # Same coordinate system. Simple intersection
-                        intersection = plot_poly.Intersection(bounds)
+                    # Prepare the data for writing
+                    image_clowder_id = ""
+                    image_name = os.path.basename(filename)
+                    if image_name in image_ids:
+                        image_clowder_id = image_ids[image_name]
 
-                    if intersection.GetArea() == 0.0:
-                        self.log_info(resource, "Skipping image: "+filename)
-                        continue
+                    # Write the datapoint geographically and otherwise
+                    csv_data = ','.join([plot_name,
+                                         'Canopy Cover',
+                                         str(centroid.GetX()),
+                                         str(centroid.GetY()),
+                                         timestamp,
+                                         host.rstrip('/') + '/files/' + image_clowder_id,
+                                         str(cc_val),
+                                         datestamp])
+                    csv_header = ','.join(['site', 'trait', 'lat', 'lon', 'dp_time',
+                                           'source', 'value', 'timestamp'])
+                    self.write_csv_file(resource, out_geo, csv_header, csv_data)
+#                    geo_file.write(','.join([plot_name,
+#                                             'Canopy Cover',
+#                                             str(centroid.GetX()),
+#                                             str(centroid.GetY()),
+#                                             timestamp,
+#                                             host.rstrip('/') + '/files/' + image_clowder_id,
+#                                             str(cc_val),
+#                                             datestamp]) + '\n')
 
-                    self.log_info(resource, "Attempting to clip '" + filename +
-                                  "' to polygon number " + str(alternate_plot_id))
+                    traits['canopy_cover'] = str(cc_val)
+                    traits['site'] = plot_name
+                    traits['local_datetime'] = timestamp
+                    trait_list = generate_traits_list(traits)
+                    csv_data = ','.join(map(str, trait_list))
+                    csv_header = ','.join(map(str, fields))
+                    self.write_csv_file(resource, out_csv, csv_header, csv_data)
+#                    csv_file.write(','.join(map(str, trait_list)) + '\n')
 
-                    # Clip the raster
-                    bounds_tuple = polygon_to_tuples_transform(plot_poly, bounds_spatial_ref)
-
-                    try:
-                        cc_val = "NA"
-
-                        clip_pix = clip_raster(filename, bounds_tuple)
-                        if clip_pix is None:
-                            self.log_error(resource, "Failed to clip image to plot name " +
-                                           plot_name)
-                            continue
-                        if len(clip_pix.shape) < 3:
-                            self.log_error(resource,
-                                           "Unexpected array shape for %s (%s)" % \
-                                                                        (plot_name, clip_pix.shape))
-                            continue
-
-                        cc_val = terraref.stereo_rgb.calculate_canopycover(rollaxis(clip_pix, 0, 3))
-
-                        # Prepare the data for writing
-                        image_clowder_id = ""
-                        image_name = os.path.basename(filename)
-                        if image_name in image_ids:
-                            image_clowder_id = image_ids[image_name]
-                        centroid = plot_poly.Centroid()
-
-                        # Write the datapoint geographically and otherwise
-                        geo_file.write(','.join([plot_name,
-                                                 'Canopy Cover',
-                                                 str(centroid.GetX()),
-                                                 str(centroid.GetY()),
-                                                 timestamp,
-                                                 host.rstrip('/') + '/files/' + image_clowder_id,
-                                                 str(cc_val),
-                                                 datestamp]) + '\n')
-
-                        traits['canopy_cover'] = str(cc_val)
-                        traits['site'] = plot_name
-                        traits['local_datetime'] = timestamp
-                        trait_list = generate_traits_list(traits)
-                        csv_file.write(','.join(map(str, trait_list)) + '\n')
-
-                    # pylint: disable=broad-except
-                    except Exception as ex:
-                        self.log_error(resource, "error generating canopy cover for %s" % plot_name)
-                        self.log_error(resource, "    exception: %s" % str(ex))
-                        continue
-                    # pylint: enable=broad-except
-
-                # Get the next shape to extract
-                feature = layer.GetNextFeature()
+                except Exception as ex:     # pylint: disable=broad-except
+                    self.log_error(resource, "error generating canopy cover for %s" % plot_name)
+                    self.log_error(resource, "    exception: %s" % str(ex))
+                    continue
 
             # All done, close the CSV files
-            csv_file.close()
-            geo_file.close()
+            #csv_file.close()
+            #geo_file.close()
 
-            # Upload this CSV to Clowder
+            # Update this dataset with the extractor info
             dataset_id = self.get_dataset_id(host, secret_key, resource, dataset_name)
             try:
-                fileid = upload_to_dataset(connector, host, self.clowder_user, self.clowder_pass,
-                                           dataset_id, out_csv)
-                geoid = upload_to_dataset(connector, host, self.clowder_user, self.clowder_pass,
-                                          dataset_id, out_geo)
-
                 # Tell Clowder this is completed so subsequent file updates don't daisy-chain
                 self.log_info(resource, "updating dataset metadata")
-                content = {"comment": "Calculated from shapefile '" + os.path.basename(shapefile) \
-                           + "'",
-                           "files_created": [fileid, geoid]
+                content = {"comment": "Calculated greenness index",
+                           "greenness value": cc_val
                           }
                 extractor_md = build_metadata(host, self.extractor_info, dataset_id, content,
-                                              'file')
+                                              'dataset')
                 clowder_dataset.remove_metadata(connector, host, secret_key, dataset_id,
                                                 self.extractor_info['name'])
                 clowder_dataset.upload_metadata(connector, host, secret_key, dataset_id,
                                                 extractor_md)
-            # pylint: disable=broad-except
-            except Exception as ex:
+
+            except Exception as ex:     # pylint: disable=broad-except
                 self.log_error(resource, "Exception updating dataset metadata: " + str(ex))
-            # pylint: enable=broad-except
         finally:
             # Signal end of processing message and restore changed variables. Be sure to restore
             # changed variables above with early returns
