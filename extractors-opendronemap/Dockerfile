@@ -1,7 +1,7 @@
 #FROM clowder/extractors-opendronemap
 FROM chrisatua/extractors:opendronemap
 
-MAINTAINER Chris Schnaufer <chris.schnaufer@email.arizona.edu>
+LABEL maintainer="Chris Schnaufer <chris.schnaufer@email.arizona.edu>"
 
 # Install any users
 RUN useradd -u 49044 extractor \
@@ -13,6 +13,7 @@ RUN chown -R extractor /home/extractor \
 
 RUN pip install -U pip && \
     pip install -U numpy && \
+    pip install -U pyclowder && \
     pip install -U utm influxdb laspy piexif && \
     pip install --ignore-installed enum34 terrautils
 

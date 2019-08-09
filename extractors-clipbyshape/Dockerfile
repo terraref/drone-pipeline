@@ -1,5 +1,5 @@
 FROM terraref/terrautils:1.5
-MAINTAINER Chris Schnaufer <schnaufer@email.arizona.edu>
+LABEL maintainer="Chris Schnaufer <schnaufer@email.arizona.edu>"
 
 # Install any users
 RUN useradd -u 49044 extractor \
