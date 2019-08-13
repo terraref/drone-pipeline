@@ -24,8 +24,6 @@ from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clo
 from terrautils.sensors import STATIONS
 from terrautils.imagefile import file_is_image_type, image_get_geobounds, get_epsg
 
-import terraref.stereo_rgb
-
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
 # without many code changes
@@ -184,6 +182,24 @@ def generate_traits_list(traits):
             trait_list.append(get_default_trait(field_name))
 
     return trait_list
+
+def calculate_canopycover_masked(pxarray):
+    """Return greenness percentage of given numpy array of pixels.
+
+    Args:
+      pxarray (numpy array): rgb image
+
+    Return:
+      (float): greenness percentage
+    """
+
+    # For masked images, all nonzero pixels are considered canopy
+    nz = count_nonzero(pxarray)
+    ratio = nz/float(pxarray.size)
+    # Scale ratio from 0-1 to 0-100
+    ratio *= 100.0
+
+    return ratio
 
 # The class for determining canopy cover from an RGB image
 class CanopyCover(TerrarefExtractor):
@@ -544,7 +560,7 @@ class CanopyCover(TerrarefExtractor):
                     centroid = imagefiles[filename]["bounds"].Centroid()
                     plot_name = _get_plot_name([resource['dataset_info']['name'], dataset_name])
 
-                    cc_val = terraref.stereo_rgb.calculate_canopycover(np.rollaxis(clip_pix, 0, 3))
+                    cc_val = calculate_canopycover_masked(np.rollaxis(clip_pix, 0, 3))
 
                     # Prepare the data for writing
                     image_clowder_id = ""
