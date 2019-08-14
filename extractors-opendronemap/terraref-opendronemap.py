@@ -21,6 +21,7 @@ from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
      check_file_in_dataset, confirm_clowder_info, timestamp_to_terraref
 from terrautils.sensors import Sensors, STATIONS
+from terrautils.metadata import prepare_pipeline_metadata
 
 from opendm import config
 
@@ -417,7 +418,8 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
                         if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
                             self.update_dataset_extractor_metadata(connector, host, secret_key,
-                                                                   new_dsid, self.experiment_metadata,
+                                                                   new_dsid, 
+                                                                   prepare_pipeline_metadata(self.experiment_metadata),
                                                                    self.extractor_info['name'])
 
                         self.sensor_dsid_map[sensor_type] = new_dsid
@@ -618,7 +620,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
             if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
                 self.update_dataset_extractor_metadata(connector, host, secret_key, target_dsid,
-                                                       self.experiment_metadata,
+                                                       prepare_pipeline_metadata(self.experiment_metadata),
                                                        self.extractor_info['name'])
 
             # Store our dataset mappings for possible later use
