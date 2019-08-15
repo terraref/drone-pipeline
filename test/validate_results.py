@@ -457,7 +457,7 @@ for one_end in file_endings:
 
                             # Check that the total histogram differences are within range
                             total_diff = np.sum(diff)
-                            print("  Pixel intensity difference sum percent: " + str(loat(total_diff) / total_pixels))
+                            print("  Pixel intensity difference sum percent: " + str(float(total_diff) / total_pixels))
                             if float(total_diff) / total_pixels >= MAX_IMAGE_SUM_DIFF_PCT:
                                 found_mismatch = True
                                 print("  Pixel intensity difference sum total (by count) exceeds threshold")
