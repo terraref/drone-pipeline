@@ -3,7 +3,7 @@
 
 Generalizing the TERRA REF pipelines for processing data from UAV's
 
-Our main site is on OSF: [UA Open Drone Pipeline]](https://osf.io/xdkcy/).
+Our main site is on OSF: [UA Open Drone Pipeline](https://osf.io/xdkcy/).
 
 ## Overview
 
