@@ -18,6 +18,7 @@ RUN pip install -U numpy && \
     pip install -U dbfread && \
     pip install -U pyclowder && \
     pip install gdal  && \
+    pip install -U cryptography && \
     pip install --upgrade --ignore-installed enum34 terrautils
 
 # command to run when starting docker

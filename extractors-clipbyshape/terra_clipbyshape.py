@@ -383,6 +383,7 @@ class ClipByShape(TerrarefExtractor):
 
                 # Create the dataset, even if we have no data to put in it, so that the caller knows
                 # it was addressed
+                ds_exists = dsid_by_name(host, secret_key, leaf_dataset)
                 target_dsid = build_dataset_hierarchy_crawl(host, secret_key,
                                                             self.clowder_user,
                                                             self.clowder_pass,
@@ -394,6 +395,11 @@ class ClipByShape(TerrarefExtractor):
                                                             datestamp[5:7],
                                                             datestamp[8:10],
                                                             leaf_ds_name=leaf_dataset)
+                if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
+                    self.update_dataset_extractor_metadata(connector, host, secret_key,
+                                                           target_dsid, 
+                                                           prepare_pipeline_metadata(self.experiment_metadata),
+                                                           self.extractor_info['name'])
 
                 # Loop through all the images looking for overlap
                 for filename in imagefiles:
@@ -481,9 +487,12 @@ class ClipByShape(TerrarefExtractor):
             # Tell Clowder this is completed so subsequent file updates don't daisy-chain
             id_len = len(uploaded_file_ids)
             if id_len > 0 or self.created > 0:
-                extractor_md = build_metadata(host, self.extractor_info, resource['id'], {
+                md = {
                     "files_created": uploaded_file_ids
-                }, 'dataset')
+                }
+                if self.experiment_metadata:
+                    md.update(prepare_pipeline_metadata(self.experiment_metadata))
+                extractor_md = build_metadata(host, self.extractor_info, resource['id'], md, 'dataset')
                 self.log_info(resource,
                               "Uploading shapefile plot extractor metadata to Level_2 dataset: "
                               + str(extractor_md))
