@@ -4,7 +4,6 @@
 '''
 
 import os
-import json
 import logging
 import math
 import random
@@ -113,7 +112,7 @@ def _get_open_backoff(prev=None):
 
     # Get a random number
     if RANDOM_GENERATOR:
-        multiplier = RANDOM_GENERATOR.random()
+        multiplier = RANDOM_GENERATOR.random()  # pylint: disable=no-member
     else:
         multiplier = random.random()
 
@@ -194,8 +193,8 @@ def calculate_canopycover_masked(pxarray):
     """
 
     # For masked images, all nonzero pixels are considered canopy
-    nz = count_nonzero(pxarray)
-    ratio = nz/float(pxarray.size)
+    nonzeros = np.count_nonzero(pxarray)
+    ratio = nonzeros/float(pxarray.size)
     # Scale ratio from 0-1 to 0-100
     ratio *= 100.0
 
@@ -441,14 +440,8 @@ class CanopyCover(TerrarefExtractor):
         self.start_message(resource)
         super(CanopyCover, self).process_message(connector, host, secret_key, resource, parameters)
 
-        # Handle any parameters
-        if isinstance(parameters, basestring):
-            parameters = json.loads(parameters)
-        elif isinstance(parameters, unicode):
-            parameters = json.loads(parameters.decode("utf-8", errors="replace"))
-
         # Initialize local variables
-        dataset_name = parameters["datasetname"]
+        dataset_name = resource["name"]
         experiment_name = "Unknown Experiment"
         datestamp = None
         citation_auth_override, citation_title_override, citation_year_override = None, None, None
@@ -467,7 +460,7 @@ class CanopyCover(TerrarefExtractor):
 
         # Get the best username, password, and space
         old_un, old_pw, old_space = (self.clowder_user, self.clowder_pass, self.clowderspace)
-        self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context()
+        self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context(host, secret_key)
 
         # Ensure that the clowder information is valid
         if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
@@ -488,8 +481,11 @@ class CanopyCover(TerrarefExtractor):
 
         try:
             # Get the best timestamp
-            datestamp = self.find_datestamp(dataset_name)
             timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
+            if "__" in timestamp:
+                datestamp = timestamp.split("__")[0]
+            else:
+                datestamp = timestamp
             _, experiment_name, _ = self.get_season_and_experiment(timestamp, self.sensor_name)
 
             # Build up a list of image IDs
@@ -502,6 +498,7 @@ class CanopyCover(TerrarefExtractor):
                                                             (image_name == res_file['filename']):
                             image_ids[image_name] = res_file['id']
 
+            file_filters = None
             if self.experiment_metadata:
                 if 'extractors' in self.experiment_metadata:
                     extractor_json = self.experiment_metadata['extractors']
@@ -512,6 +509,13 @@ class CanopyCover(TerrarefExtractor):
                             citation_year_override = extractor_json['canopyCover']['citationYear']
                         if 'citationTitle' in extractor_json['canopyCover']:
                             citation_title_override = extractor_json['canopyCover']['citationTitle']
+                    if self.sensor_name in extractor_json:
+                        if 'filters' in extractor_json[self.sensor_name]:
+                            file_filters = extractor_json[self.sensor_name]['filters']
+                            if ',' in file_filters:
+                                file_filters = file_filters.split(',')
+                            elif file_filters:
+                                file_filters = [file_filters]
 
                 if 'germplasmName' in self.experiment_metadata:
                     config_specie = self.experiment_metadata['germplasmName']
@@ -549,6 +553,16 @@ class CanopyCover(TerrarefExtractor):
 
             # Loop through all the images (of which there should be one - see above)
             for filename in imagefiles:
+
+                # Check if we're filtering files
+                if file_filters:
+                    filtered = False
+                    for one_filter in file_filters:
+                        if one_filter in os.path.basename(one_file):
+                            filtered = True
+                            break
+                    if not filtered:
+                        continue
 
                 try:
                     cc_val = ""
