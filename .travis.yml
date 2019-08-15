@@ -34,7 +34,7 @@ stages:
 matrix:
   include:
     - name: "OpenDroneMap Extractor"
-      env: EXTRACTOR_BRANCH=opendronemap EXTRACTOR_RUN_EXTRA_PARAMS= TEST_SOURCE_ARCHIVE=test/odm_test_data.tar TEST_COMPARE_ARCHIVE=test/odm_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:terra-odm RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=rgb_.tif,.laz RESULT_DATASET_FILTER= VALIDATION_PARAMS="-pixdiff=2 -geotiffclip=408978.24,3660495.25,408993.26,3660488.58 -bychannel=0.5,4.0" SILENCE_FOLDER_LISTING=
+      env: EXTRACTOR_BRANCH=opendronemap EXTRACTOR_RUN_EXTRA_PARAMS= TEST_SOURCE_ARCHIVE=gdrive:1E-lf6ADbkLONHyvZjiQRZ9CR2WmQ4nua/odm_test_data.tar TEST_COMPARE_ARCHIVE=gdrive:1nF2AhO9UCoRaV0Tul6d2n7LjRZs6nT1Y/odm_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:terra-odm RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=rgb_.tif,.laz RESULT_DATASET_FILTER= VALIDATION_PARAMS="-pixdiff=2 -geotiffclip=408978.24,3660495.25,408993.26,3660488.58 -bychannel=0.5,4.0" SILENCE_FOLDER_LISTING=
       if: branch = master OR branch = develop OR branch =~ /.*opendronemap.*/ OR branch =~ /.*odm.*/ OR branch =~ /.*travis.*/
     - name: "Clip By Shape Extractor"
       env: EXTRACTOR_BRANCH=clipbyshape EXTRACTOR_RUN_EXTRA_PARAMS="-e 'MOUNTED_PATHS={\"/home/extractor/sites\":\"/home/extractor/sites\"}'" TEST_SOURCE_ARCHIVE=gdrive:1_kYL1gSb1wmiokIYN3dgU8baVPS01R9K/clipbyshape_test_data.tar TEST_COMPARE_ARCHIVE=gdrive:1eCQhlNtMlKqB73REmbrSAWE4pDDXO9IM/clipbyshape_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:clipbyshape RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=.tif RESULT_DATASET_FILTER="- (.+?) -" VALIDATION_PARAMS= SILENCE_FOLDER_LISTING=true
