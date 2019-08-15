@@ -22,6 +22,7 @@ from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clo
      timestamp_to_terraref
 from terrautils.sensors import STATIONS
 from terrautils.imagefile import file_is_image_type, image_get_geobounds, get_epsg
+from terrautils.metadata import prepare_pipeline_metadata
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
@@ -364,9 +365,12 @@ class CanopyCover(TerrarefExtractor):
         backoff_secs = None
         for tries in range(0, MAX_CSV_FILE_OPEN_TRIES):
             try:
-                csv_file = open(filename, 'w+')
+                csv_file = open(filename, 'a+')
             except Exception as ex:     # pylint: disable=broad-except
                 pass
+
+            if csv_file:
+                break
 
             # If we can't open the file, back off and try again (unless it's our last try)
             if tries < MAX_CSV_FILE_OPEN_TRIES - 1:
@@ -384,10 +388,10 @@ class CanopyCover(TerrarefExtractor):
         try:
             # Check if we need to write a header
             if os.fstat(csv_file.fileno()).st_size <= 0:
-                csv_file.write(header)
+                csv_file.write(header + "\n")
 
             # Write out data
-            csv_file.write(data)
+            csv_file.write(data + "\n")
 
             wrote_file = True
         except Exception as ex:     # pylint: disable=broad-except
@@ -629,6 +633,8 @@ class CanopyCover(TerrarefExtractor):
                 content = {"comment": "Calculated greenness index",
                            "greenness value": cc_val
                           }
+                if self.experiment_metadata:
+                    content.update(prepare_pipeline_metadata(self.experiment_metadata))
                 extractor_md = build_metadata(host, self.extractor_info, dataset_id, content,
                                               'dataset')
                 clowder_dataset.remove_metadata(connector, host, secret_key, dataset_id,
