@@ -3,6 +3,8 @@
 
 Generalizing the TERRA REF pipelines for processing data from UAV's
 
+Our main site is on OSF: [UA Open Drone Pipeline]](https://osf.io/xdkcy/).
+
 ## Overview
 
 This project is leveraging the work done in the TERRA REF project to create a drone-specific processing pipeline for plant based analysis.

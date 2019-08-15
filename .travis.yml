@@ -1,6 +1,7 @@
 # READ THIS
 # The Travis CI environment needs to have the following defined:
 # 1. DOCKER_COMPOSE_VERSION - the version of docker-compose to install
+# Additional information can be found at https://docs.google.com/document/d/1XluZEZNzYHW6rDXrJOrddhE0lG9lTj1-JvRoKjiN6Kg/edit?usp=sharing
 
 # Superuser for docker commands and such
 sudo: required
