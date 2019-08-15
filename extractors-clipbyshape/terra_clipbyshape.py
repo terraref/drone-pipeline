@@ -4,10 +4,9 @@
 '''
 
 import os
-import json
 import logging
+import requests # for dsid_by_name()
 import osr
-import unicodedata
 
 from osgeo import ogr
 from numpy import nan
@@ -24,6 +23,7 @@ from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
 from terrautils.imagefile import file_is_image_type, image_get_geobounds, \
      polygon_to_tuples_transform, get_epsg
+from terrautils.metadata import prepare_pipeline_metadata
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
@@ -86,6 +86,36 @@ def get_plot_name(name_idx, data):
         plot_name = None
 
     return plot_name
+
+def dsid_by_name(host, key, name):
+    """Looks up the ID of a dataset by nanme
+
+    Args:
+        host(str): the URI of the host making the connection
+        key(str): used with the host API
+        name(str): the dataset name to look up
+
+    Return:
+        Returns the ID of the dataset if it's found. Returns None if the dataset
+        isn't found
+    """
+    url = "%sapi/datasets?key=%s&title=%s&exact=true" % (host, key, name)
+
+    try:
+        result = requests.get(url)
+        result.raise_for_status()
+
+        ds_md = result.json()
+        md_len = len(ds_md)
+    except Exception as ex:     # pylint: disable=broad-except
+        ds_md = None
+        md_len = 0
+        logging.debug(ex.message)
+
+    if ds_md and md_len > 0 and "id" in ds_md[0]:
+        return ds_md[0]["id"]
+
+    return None
 
 # The class for clipping images by shape
 class ClipByShape(TerrarefExtractor):
@@ -196,6 +226,32 @@ class ClipByShape(TerrarefExtractor):
         # Return what we've found
         return (shapefile, shxfile, dbffile, imagefiles)
 
+    # pylint: disable=too-many-arguments
+    def update_dataset_extractor_metadata(self, connector, host, key, dsid, metadata,\
+                                          extractor_name):
+        """Adds or replaces existing dataset metadata for the specified extractor
+
+        Args:
+            connector(obj): the message queue connector instance
+            host(str): the URI of the host making the connection
+            key(str): used with the host API
+            dsid(str): the dataset to update
+            metadata(str): the metadata string to update the dataset with
+            extractor_name(str): the name of the extractor to associate the metadata with
+        """
+        meta = build_metadata(host, self.extractor_info, dsid, metadata, "dataset")
+
+        try:
+            md_len = len(clowder_dataset.download_metadata(connector, host, key, dsid, extractor_name))
+        except Exception as ex:     # pylint: disable=broad-except
+            md_len = 0
+            logging.debug(ex.message)
+
+        if md_len > 0:
+            clowder_dataset.remove_metadata(connector, host, key, dsid, extractor_name)
+
+        clowder_dataset.upload_metadata(connector, host, key, dsid, meta)
+
     # Entry point for checking how message should be handled
     # pylint: disable=too-many-arguments
     def check_message(self, connector, host, secret_key, resource, parameters):
@@ -229,14 +285,7 @@ class ClipByShape(TerrarefExtractor):
         super(ClipByShape, self).process_message(connector, host, secret_key, resource,
                                                  parameters)
 
-        # Handle any parameters
-        if isinstance(parameters, basestring):
-            parameters = json.loads(parameters)
-        if isinstance(parameters, unicode):
-            parameters = json.loads(str(parameters))
-
         # Initialize local variables
-        dataset_name = parameters["datasetname"]
         season_name, experiment_name = "Unknown Season", "Unknown Experiment"
         datestamp, shape_table, plot_name_idx, shape_rows = None, None, None, None
 
@@ -293,17 +342,28 @@ class ClipByShape(TerrarefExtractor):
                             image_ids[image_name] = res_file['id']
 
             # Get timestamps. Also get season and experiment information for Clowder collections
-            datestamp = self.find_datestamp(dataset_name)
-            timestamp = timestamp_to_terraref(self.find_timestamp(dataset_name))
+            timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
+            if "__" in timestamp:
+                datestamp = timestamp.split("__")[0]
+            else:
+                datestamp = timestamp
             (season_name, experiment_name, _) = self.get_season_and_experiment(datestamp,
                                                                                self.sensor_name)
 
+            file_filters = None
             if self.experiment_metadata:
                 if 'extractors' in self.experiment_metadata:
                     extractor_json = self.experiment_metadata['extractors']
                     if 'shapefile' in extractor_json:
                         if 'plot_column_name' in extractor_json['shapefile']:
                             plot_name_idx = extractor_json['shapefile']['plot_column_name']
+                    if self.sensor_name in extractor_json:
+                        if 'filters' in extractor_json[self.sensor_name]:
+                            file_filters = extractor_json[self.sensor_name]['filters']
+                            if ',' in file_filters:
+                                file_filters = file_filters.split(',')
+                            elif file_filters:
+                                file_filters = [file_filters]
 
             # Check our current local variables
             if dbffile is None:
@@ -315,7 +375,7 @@ class ClipByShape(TerrarefExtractor):
             shape_in = ogr.Open(shapefile)
             layer_name = os.path.split(os.path.splitext(shapefile)[0])[1]
             if isinstance(layer_name, unicode):
-                layer_name = layer_name.encode('ascii','ignore')
+                layer_name = layer_name.encode('ascii', 'ignore')
             layer = shape_in.GetLayer(layer_name)
             feature = layer.GetNextFeature()
             layer_ref = layer.GetSpatialRef()
@@ -397,12 +457,22 @@ class ClipByShape(TerrarefExtractor):
                                                             leaf_ds_name=leaf_dataset)
                 if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
                     self.update_dataset_extractor_metadata(connector, host, secret_key,
-                                                           target_dsid, 
+                                                           target_dsid,
                                                            prepare_pipeline_metadata(self.experiment_metadata),
                                                            self.extractor_info['name'])
 
                 # Loop through all the images looking for overlap
                 for filename in imagefiles:
+
+                    # Check if we're filtering files
+                    if file_filters:
+                        filtered = False
+                        for one_filter in file_filters:
+                            if one_filter in os.path.basename(filename):
+                                filtered = True
+                                break
+                        if not filtered:
+                            continue
 
                     # Get the bounds. We also get the reference systems in case we need to convert
                     # between them
@@ -487,12 +557,12 @@ class ClipByShape(TerrarefExtractor):
             # Tell Clowder this is completed so subsequent file updates don't daisy-chain
             id_len = len(uploaded_file_ids)
             if id_len > 0 or self.created > 0:
-                md = {
+                ds_md = {
                     "files_created": uploaded_file_ids
                 }
                 if self.experiment_metadata:
-                    md.update(prepare_pipeline_metadata(self.experiment_metadata))
-                extractor_md = build_metadata(host, self.extractor_info, resource['id'], md, 'dataset')
+                    ds_md.update(prepare_pipeline_metadata(self.experiment_metadata))
+                extractor_md = build_metadata(host, self.extractor_info, resource['id'], ds_md, 'dataset')
                 self.log_info(resource,
                               "Uploading shapefile plot extractor metadata to Level_2 dataset: "
                               + str(extractor_md))
