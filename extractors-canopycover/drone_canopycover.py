@@ -558,7 +558,7 @@ class CanopyCover(TerrarefExtractor):
                 if file_filters:
                     filtered = False
                     for one_filter in file_filters:
-                        if one_filter in os.path.basename(one_file):
+                        if one_filter in os.path.basename(filename):
                             filtered = True
                             break
                     if not filtered:
