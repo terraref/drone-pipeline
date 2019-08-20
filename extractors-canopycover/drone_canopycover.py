@@ -143,7 +143,7 @@ def get_default_trait(trait_name):
     global TRAIT_NAME_MAP
 
     if trait_name in TRAIT_NAME_ARRAY_VALUE:
-        return []
+        return TRAIT_NAME_ARRAY_VALUE[trait_name]
     elif trait_name in TRAIT_NAME_MAP:
         return TRAIT_NAME_MAP[trait_name]
     return ""
@@ -203,9 +203,10 @@ def calculate_canopycover_masked(pxarray):
 
 # The class for determining canopy cover from an RGB image
 class CanopyCover(TerrarefExtractor):
-    """Extractor for clipping georeferenced images to plot boundaries via a shape file
+    """Extractor for calculating canopy cover for an image
 
-       The extractor creates datasets of images for each plot and uploads them to Clowder
+       The extractor updates the metadata in Clowder with the canopy cover value. Also
+       writes the value to a CSV fils
     """
     def __init__(self):
         """Initialization of class instance.
@@ -654,6 +655,5 @@ class CanopyCover(TerrarefExtractor):
             self.end_message(resource)
 
 if __name__ == "__main__":
-    # pylint: disable=invalid-name
-    extractor = CanopyCover()
+    extractor = CanopyCover()       # pylint: disable=invalid-name
     extractor.start()
