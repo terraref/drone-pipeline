@@ -484,32 +484,25 @@ class ClipByShape(TerrarefExtractor):
                     # between them
                     bounds = imagefiles[filename]['bounds']
                     bounds_spatial_ref = bounds.GetSpatialReference()
-                    connector.status_update("HACK", resource, "Image bounds: (" + str(bounds_spatial_ref) + ") " + str(bounds))
 
                     # Checking for geographic overlap and skip if there is none
                     if not bounds_spatial_ref.IsSame(plot_spatial_ref):
                         # We need to convert coordinate system before an intersection
-                        connector.status_update("HACK", resource, "Transform bounds to " + str(plot_spatial_ref))
                         transform = osr.CoordinateTransformation(bounds_spatial_ref,
                                                                  plot_spatial_ref)
                         new_bounds = bounds.Clone()
                         if new_bounds:
                             new_bounds.Transform(transform)
-                            connector.status_update("HACK", resource, "Intersecting: " + str(plot_poly) + " & " + str(new_bounds))
                             intersection = plot_poly.Intersection(new_bounds)
                             new_bounds = None
                     else:
                         # Same coordinate system. Simple intersection
-                        connector.status_update("HACK", resource, "No transformation")
-                        connector.status_update("HACK", resource, "Intersecting: " + str(plot_poly) + " & " + str(bounds))
                         intersection = plot_poly.Intersection(bounds)
 
                     if intersection.GetArea() == 0.0:
-                        connector.status_update("HACK", resource, "no overlap")
                         self.log_info(resource, "Skipping image: "+filename)
                         continue
 
-                    connector.status_update("HACK", resource, "About to clip")
                     self.log_info(resource, "Attempting to clip '" + filename +
                                   "' to polygon number " + str(alternate_plot_id))
 
@@ -519,10 +512,8 @@ class ClipByShape(TerrarefExtractor):
                                                                filename=os.path.basename(filename),
                                                                plot=plot_name,
                                                                subsensor=self.sensor_name)
-                    connector.status_update("HACK", resource, "Overwrite: " + str(self.overwrite_ok) + " '" + out_file + "'")
                     if (file_exists(out_file) and not self.overwrite_ok):
                         # The file exists and don't want to overwrite it
-                        connector.status_update("HACK", resource, "    Skipping")
                         self.logger.warn("Skipping existing output file: %s", out_file)
                         continue
 
@@ -544,10 +535,8 @@ class ClipByShape(TerrarefExtractor):
                     # Upload the clipped image to the dataset
                     found_in_dest = check_file_in_dataset(connector, host, secret_key, target_dsid,
                                                           out_file, remove=self.overwrite_ok)
-                    connector.status_update("HACK", resource, "Found in dest: " + str(self.overwrite_ok) + " " + str(found_in_dest))
                     if not found_in_dest or self.overwrite_ok:
                         image_name = os.path.basename(filename)
-                        connector.status_update("HACK", resource, "    Uploading image: " + image_name)
                         content = {
                             "comment": "Clipped from shapefile " + os.path.basename(shapefile),
                             "imageName": image_name
@@ -563,7 +552,6 @@ class ClipByShape(TerrarefExtractor):
                         meta = build_metadata(host, self.extractor_info, fileid, content, 'file')
                         clowder_file.upload_metadata(connector, host, secret_key, fileid, meta)
                     else:
-                        connector.status_update("HACK", resource, "    Skipping")
                         self.logger.warn("Skipping existing file in dataset: %s", out_file)
 
                     self.created += 1
@@ -574,7 +562,6 @@ class ClipByShape(TerrarefExtractor):
 
             # Tell Clowder this is completed so subsequent file updates don't daisy-chain
             id_len = len(uploaded_file_ids)
-            connector.status_update("HACK", resource, "Number of IDs: " + str(id_len))
             if id_len > 0 or self.created > 0:
                 ds_md = {
                     "files_created": uploaded_file_ids
