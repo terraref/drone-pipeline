@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 '''Extractor for clipping images to plots via a shapefile
 '''
@@ -468,7 +468,6 @@ class ClipByShape(TerrarefExtractor):
 
                 # Loop through all the images looking for overlap
                 for filename in imagefiles:
-                    logging.warning("Working on image file: '" + filename + "'")
 
                     # Check if we're filtering files
                     if file_filters:
