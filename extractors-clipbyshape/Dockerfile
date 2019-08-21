@@ -1,4 +1,4 @@
-FROM terraref/terrautils:1.5
+FROM terraref/terrautils:python3
 LABEL maintainer="Chris Schnaufer <schnaufer@email.arizona.edu>"
 
 # Install any users
@@ -10,16 +10,28 @@ RUN chown -R extractor /home/extractor \
     && chgrp -R extractor /home/extractor 
 
 # install and upgrade packages
-RUN apt install -y imagemagick gdal-bin libgdal-dev
+RUN apt-get update && \
+    apt-get install -y imagemagick \
+        gdal-bin \
+        libgdal-dev \
+        python3-gdal \
+        python3-pip && \
+    python3 -m pip install -U \
+        pip \
+        numpy \
+        dbfread \
+        utm \
+        influxdb \
+        laspy \
+        python-dateutil \
+        pyclowder && \
+    python3 -m pip install -U cryptography && \
+    python3 -m pip install gdal
+RUN    python3 -m pip install --upgrade terrautils
 
-RUN pip install --upgrade pip 
-
-RUN pip install -U numpy && \
-    pip install -U dbfread && \
-    pip install -U pyclowder && \
-    pip install gdal  && \
-    pip install -U cryptography && \
-    pip install --upgrade --ignore-installed enum34 terrautils
+RUN apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # command to run when starting docker
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
