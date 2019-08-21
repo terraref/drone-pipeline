@@ -1,5 +1,5 @@
 # Drone Pipeline
-<img src="./resources/drone-pipeline.png" width="100" />
+<img src="https://github.com/az-digitalag/Drone-Processing-Pipeline/raw/07b1edc34a1faea501c80f583beb07f9d6b290bb/resources/drone-pipeline.png" width="100" />
 
 Generalizing the TERRA REF pipelines for processing data from UAV's
 
