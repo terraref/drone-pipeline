@@ -1,0 +1,80 @@
+[FORMAT]
+
+# Number of spaces of indent required inside a hanging or continued line.
+indent-after-paren=4
+
+# String used as indentation unit. !!Do not use tabs!!
+indent-string='    '
+
+# Maximum number of characters on a single line.
+max-line-length=120
+
+# Maximum number of lines in a module
+max-module-lines=1000
+
+# List of optional constructs for which whitespace checking is disabled. `dict-
+# separator` is used to allow tabulation in dicts, etc.: {1  : 1,\n222: 2}.
+# `trailing-comma` allows a space between comma and closing bracket: (a, ).
+# `empty-line` allows space-only lines.
+no-space-check=trailing-comma,
+               dict-separator,
+               empty-line
+
+[BASIC]
+
+# Naming style matching correct class names
+class-naming-style=PascalCase
+
+# Regular expression matching correct class names. Overrides class-naming-style
+# Pascal case and lower-case names with both leading and trailing double underscores ('__')
+class-rgx=^[A-Z][a-z]+(?:[A-Z][a-z]+)*$|__[a-z]+__$
+
+# Good variable names which should always be accepted, separated by a comma
+good-names=i,
+           j,
+           k,
+           l,
+           m,
+           n,
+           ex,
+           _
+
+# Naming style matching correct variable names
+variable-naming-style=snake_case
+
+# Regular expression matching correct variable names. Overrides variable-
+# naming-style
+#variable-rgx=
+
+
+[DESIGN]
+
+# Maximum number of arguments for function / method
+max-args=10
+
+# Maximum number of boolean expressions in a if statement
+max-bool-expr=4
+
+# Maximum number of branch for function / method body
+max-branches=12
+
+# Maximum number of locals for function / method body
+max-locals=30
+
+# Maximum number of parents for a class (see R0901).
+max-parents=3
+
+# Maximum number of public methods for a class (see R0904).
+max-public-methods=20
+
+# Maximum number of return / yield for function / method body
+max-returns=10
+
+# Maximum number of statements in function / method body
+max-statements=50
+
+[EXCEPTIONS]
+
+# Exceptions that will emit a warning when being caught. None defined
+# Many times all exceptions want to be caught and handled the same way
+overgeneral-exceptions=
