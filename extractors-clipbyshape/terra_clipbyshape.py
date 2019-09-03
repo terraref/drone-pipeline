@@ -15,6 +15,7 @@ from dbfread import DBF
 
 import pyclowder.datasets as clowder_dataset
 import pyclowder.files as clowder_file
+import pyclowder.utils
 from pyclowder.utils import CheckMessage
 
 from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clowder_info, \
@@ -550,6 +551,8 @@ class ClipByShape(TerrarefExtractor):
                         # Generate our metadata
                         meta = build_metadata(host, self.extractor_info, fileid, content, 'file')
                         clowder_file.upload_metadata(connector, host, secret_key, fileid, meta)
+                        connector.status_update(pyclowder.utils.StatusMessage.done, {"type": "file", "id": fileid}, "Done uploading file")
+                        connector.status_update(pyclowder.utils.StatusMessage.done, {"type": "dataset", "id": target_dsid}, "Done updating dataset")
                     else:
                         self.logger.warn("Skipping existing file in dataset: %s", out_file)
 
