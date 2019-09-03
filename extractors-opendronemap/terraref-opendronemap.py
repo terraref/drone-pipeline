@@ -12,14 +12,13 @@ import json
 import gzip
 import shutil
 import logging
-import requests # for dsid_by_name()
 import piexif
 
 import pyclowder.datasets as ds
 from pyclowder.files import upload_metadata
 from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
-     check_file_in_dataset, confirm_clowder_info, timestamp_to_terraref
+     check_file_in_dataset, timestamp_to_terraref, get_datasetid_by_name
 from terrautils.sensors import Sensors, STATIONS
 from terrautils.metadata import prepare_pipeline_metadata
 
@@ -63,36 +62,6 @@ def check_delete_folder(folder):
         except Exception as ex:
             logging.debug("Execption deleting folder %s", folder)
             logging.debug("  %s", ex.message)
-
-def dsid_by_name(host, key, name):
-    """Looks up the ID of a dataset by nanme
-
-    Args:
-        host(str): the URI of the host making the connection
-        key(str): used with the host API
-        name(str): the dataset name to look up
-
-    Return:
-        Returns the ID of the dataset if it's found. Returns None if the dataset
-        isn't found
-    """
-    url = "%sapi/datasets?key=%s&title=%s&exact=true" % (host, key, name)
-
-    try:
-        result = requests.get(url)
-        result.raise_for_status()
-
-        md = result.json()
-        md_len = len(md)
-    except Exception as ex:     # pylint: disable=broad-except
-        md = None
-        md_len = 0
-        logging.debug(ex.message)
-
-    if md and md_len > 0 and "id" in md[0]:
-        return md[0]["id"]
-
-    return None
 
 def exif_tags_to_timestamp(exif_tags):
     """Looks up the origin timestmp and a timestamp offset in the exit tags and returns
@@ -405,7 +374,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                              sensor=sensor_type)
 
                         sensor_leaf_name = new_sensor.get_display_name() + ' - ' + timestamp
-                        ds_exists = dsid_by_name(host, secret_key, sensor_leaf_name)
+                        ds_exists = get_datasetid_by_name(host, secret_key, sensor_leaf_name)
                         new_dsid = build_dataset_hierarchy_crawl(host, secret_key,
                                                                  self.clowder_user,
                                                                  self.clowder_pass,
@@ -418,7 +387,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
                         if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
                             self.update_dataset_extractor_metadata(connector, host, secret_key,
-                                                                   new_dsid, 
+                                                                   new_dsid,
                                                                    prepare_pipeline_metadata(self.experiment_metadata),
                                                                    self.extractor_info['name'])
 
@@ -491,28 +460,13 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         sensor_type = "rgb"
 
         # Initialize more local variables
-        #dataset_name = parameters["datasetname"]
         scan_name = parameters["scan_type"] if "scan_type" in parameters else ""
 
-        # Get the best username, password, and space
-        old_un, old_pw, old_space = (self.clowder_user, self.clowder_pass, self.clowderspace)
-        self.clowder_user, self.clowder_pass, self.clowderspace = \
-                                                    self.get_clowder_context(host, secret_key)
-
-        # Ensure that the clowder information is valid
-        if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
-                                    self.clowder_pass):
-            self.log_error(resource, "Clowder configuration is invalid. Not processing " +\
-                                     "request")
-            self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
+        # Setup overrides and get the restore function
+        restore_fn = self.setup_overrides(host, secret_key, resource)
+        if not restore_fn:
             self.end_message(resource)
             return
-
-        # Change the base path of files to include the user by tweaking the sensor's value
-        _, new_base = self.get_username_with_base_path(host, secret_key, resource['id'],
-                                                       self.sensors.base)
-        sensor_old_base = self.sensors.base
-        self.sensors.base = new_base
 
         try:
             # Get the best timestamp
@@ -557,10 +511,6 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             if thumb_exists and med_exists and full_exists and not self.overwrite_ok:
                 if  png_exists:
                     self.log_skip(resource, "all outputs already exist")
-                    # Restore anything we need to before returning
-                    self.clowder_user, self.clowder_pass, self.clowderspace = \
-                                                                    (old_un, old_pw, old_space)
-                    self.sensors.base = sensor_old_base
                     return
                 else:
                     self.log_info(resource, "all outputs already exist (10% PNG thumbnail must" \
@@ -609,7 +559,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
             # Get dataset ID or create it, creating parent collections as needed
             leaf_ds_name = self.sensors.get_display_name() + ' - ' + timestamp
-            ds_exists = dsid_by_name(host, secret_key, leaf_ds_name)
+            ds_exists = get_datasetid_by_name(host, secret_key, leaf_ds_name)
             target_dsid = build_dataset_hierarchy_crawl(host, secret_key, self.clowder_user,
                                                         self.clowder_pass, self.clowderspace,
                                                         season_name, experiment_name,
@@ -684,8 +634,8 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         finally:
             # We are done, restore fields we've modified (also be sure to restore fields in the
             # early returns in the code above)
-            self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
-            self.sensors.base = sensor_old_base
+            if restore_fn:
+                restore_fn()
             self.end_message(resource)
 
 if __name__ == "__main__":
