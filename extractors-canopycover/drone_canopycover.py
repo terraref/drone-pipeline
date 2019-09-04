@@ -18,10 +18,9 @@ from osgeo import ogr
 import pyclowder.datasets as clowder_dataset
 from pyclowder.utils import CheckMessage
 
-from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clowder_info, \
-     timestamp_to_terraref
-from terrautils.sensors import STATIONS
+from terrautils.extractors import TerrarefExtractor, build_metadata, timestamp_to_terraref
 from terrautils.imagefile import file_is_image_type, image_get_geobounds, get_epsg
+from terrautils.sensors import STATIONS
 from terrautils.metadata import prepare_pipeline_metadata
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
@@ -463,26 +462,11 @@ class CanopyCover(TerrarefExtractor):
             (key, value) = imagefiles.popitem()
             imagefiles = {key : value}
 
-        # Get the best username, password, and space
-        old_un, old_pw, old_space = (self.clowder_user, self.clowder_pass, self.clowderspace)
-        self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context(host, secret_key)
-
-        # Ensure that the clowder information is valid
-        if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
-                                    self.clowder_pass):
-            self.log_error(resource, "Clowder configuration is invalid. Not processing " +\
-                                     "request")
-            self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
+        # Setup overrides and get the restore function
+        restore_fn = self.setup_overrides(host, secret_key, resource)
+        if not restore_fn:
             self.end_message(resource)
             return
-
-        # Change the base path of files to include the user by tweaking the sensor's value
-        sensor_old_base = None
-        if self.get_terraref_metadata is None:
-            _, new_base = self.get_username_with_base_path(host, secret_key, resource['id'],
-                                                           self.sensors.base)
-            sensor_old_base = self.sensors.base
-            self.sensors.base = new_base
 
         try:
             # Get the best timestamp
@@ -535,14 +519,9 @@ class CanopyCover(TerrarefExtractor):
             out_geo = os.path.splitext(rootdir)[0] + "_canopycover_geo.csv"
 
             self.log_info(resource, "Writing Shapefile CSV to %s" % out_csv)
-            #csv_file = open(out_csv, 'w')
             (fields, traits) = get_traits_table()
-            #csv_file.write(','.join(map(str, fields)) + '\n')
 
             self.log_info(resource, "Writing Geostreams CSV to %s" % out_geo)
-            #geo_file = open(out_geo, 'w')
-            #geo_file.write(','.join(['site', 'trait', 'lat', 'lon', 'dp_time',
-            #                         'source', 'value', 'timestamp']) + '\n')
 
             # Setup default trait values
             if not config_specie is None:
@@ -599,14 +578,6 @@ class CanopyCover(TerrarefExtractor):
                     csv_header = ','.join(['site', 'trait', 'lat', 'lon', 'dp_time',
                                            'source', 'value', 'timestamp'])
                     self.write_csv_file(resource, out_geo, csv_header, csv_data)
-#                    geo_file.write(','.join([plot_name,
-#                                             'Canopy Cover',
-#                                             str(centroid.GetX()),
-#                                             str(centroid.GetY()),
-#                                             timestamp,
-#                                             host.rstrip('/') + '/files/' + image_clowder_id,
-#                                             str(cc_val),
-#                                             datestamp]) + '\n')
 
                     traits['canopy_cover'] = str(cc_val)
                     traits['site'] = plot_name
@@ -615,16 +586,11 @@ class CanopyCover(TerrarefExtractor):
                     csv_data = ','.join(map(str, trait_list))
                     csv_header = ','.join(map(str, fields))
                     self.write_csv_file(resource, out_csv, csv_header, csv_data)
-#                    csv_file.write(','.join(map(str, trait_list)) + '\n')
 
-                except Exception as ex:     # pylint: disable=broad-except
-                    self.log_error(resource, "error generating canopy cover for %s" % plot_name)
+                except Exception as ex:
+                    self.log_error(resource, "Error generating canopy cover for %s" % plot_name)
                     self.log_error(resource, "    exception: %s" % str(ex))
                     continue
-
-            # All done, close the CSV files
-            #csv_file.close()
-            #geo_file.close()
 
             # Update this dataset with the extractor info
             dataset_id = self.get_dataset_id(host, secret_key, resource, dataset_name)
@@ -643,15 +609,13 @@ class CanopyCover(TerrarefExtractor):
                 clowder_dataset.upload_metadata(connector, host, secret_key, dataset_id,
                                                 extractor_md)
 
-            except Exception as ex:     # pylint: disable=broad-except
+            except Exception as ex:
                 self.log_error(resource, "Exception updating dataset metadata: " + str(ex))
         finally:
             # Signal end of processing message and restore changed variables. Be sure to restore
             # changed variables above with early returns
-            if not sensor_old_base is None:
-                self.sensors.base = sensor_old_base
-
-            self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
+            if restore_fn:
+                restore_fn()
             self.end_message(resource)
 
 if __name__ == "__main__":
