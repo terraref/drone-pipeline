@@ -1,5 +1,4 @@
-#FROM clowder/extractors-opendronemap
-FROM chrisatua/extractors:opendronemap
+FROM clowder/extractors-opendronemap:2.0
 
 LABEL maintainer="Chris Schnaufer <chris.schnaufer@email.arizona.edu>"
 
