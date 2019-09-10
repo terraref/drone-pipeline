@@ -8,6 +8,7 @@ import logging
 import math
 import random
 import time
+import csv
 import requests
 import osr
 import numpy as np
@@ -18,20 +19,23 @@ from osgeo import ogr
 import pyclowder.datasets as clowder_dataset
 from pyclowder.utils import CheckMessage
 
-from terrautils.extractors import TerrarefExtractor, build_metadata, timestamp_to_terraref
+from terrautils.extractors import TerrarefExtractor, build_metadata, timestamp_to_terraref, \
+        file_filtered_in, terraref_timestamp_to_iso
 from terrautils.imagefile import file_is_image_type, image_get_geobounds, get_epsg
 from terrautils.sensors import STATIONS
 from terrautils.metadata import prepare_pipeline_metadata
+from terrautils.betydb import get_bety_key, get_bety_api
+from terrautils.geostreams import create_datapoint_with_dependencies
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
 # without many code changes
 if 'ua-mac' in STATIONS:
-    if 'canopybyshape' not in STATIONS['ua-mac']:
-        STATIONS['ua-mac']['canopybyshape'] = {'template': '{base}/{station}/Level_3/' + \
-                                                           '{sensor}/{date}/{timestamp}/{filename}',
-                                               'pattern': '{sensor}_L3_{station}_{date}{opts}.csv',
-                                              }
+    if 'canopybyplot' not in STATIONS['ua-mac']:
+        STATIONS['ua-mac']['canopybyplot'] = {'template': '{base}/{station}/Level_3/' + \
+                                                          '{sensor}/{date}/{timestamp}/{filename}',
+                                              'pattern': '{sensor}_L3_{station}_{date}{opts}.csv',
+                                             }
 
 # Number of tries to open a CSV file before we give up
 MAX_CSV_FILE_OPEN_TRIES = 10
@@ -52,7 +56,65 @@ TRAIT_NAME_MAP = {
     'method': 'Canopy Cover Estimation from RGB images'
 }
 
+# Used to generate random nuymbers
 RANDOM_GENERATOR = None
+
+def update_geostreams(connector, host, secret_key, geo_csv_header, geo_rows):
+    """Sends the rows of csv data to geostreams
+    Args:
+        connector(obj): the message queue connector instance
+        host(str): the URI of the host making the connection
+        secret_key(str): used with the host API
+        geo_csv_header(str): comma separated list of column headers
+        geo_rows(list): list of strings that are comma separated column data (list of data rows)
+    Notes:
+        Header names expected are: 'lat', 'lon', 'dp_time', 'timestamp', 'source', 'value', and 'trait'
+    """
+    data = [geo_csv_header]
+    data.extend(geo_rows)
+
+    reader = csv.DictReader(data)
+    idx = 1
+    for row in reader:
+        centroid_lonlat = [row['lon'], row['lat']]
+        time_fmt = row['dp_time']
+        timestamp = row['timestamp']
+        dpmetadata = {
+            "source": row['source'],
+            "value": row['value']
+        }
+        trait = row['trait']
+
+        idx += 1
+        create_datapoint_with_dependencies(connector, host, secret_key, trait,
+                                           (centroid_lonlat[1], centroid_lonlat[0]), time_fmt, time_fmt,
+                                           dpmetadata, timestamp)
+
+def update_betydb(bety_csv_header, bety_rows):
+    """Sends the rows of csv data to BETYdb
+    Args:
+        bety_csv_header(str): comma separated list of column headers
+        bety_rows(list): list of strings that are comma separated column data (list of data rows)
+    """
+    betyurl = get_bety_api('traits')
+    request_params = {'key': get_bety_key()}
+    filetype = 'csv'
+    content_type = 'text/csv'
+    data = [bety_csv_header]
+    data.extend(bety_rows)
+
+    resp = requests.post("%s.%s" % (betyurl, filetype), params=request_params,
+                         data=os.linesep.join(data),
+                         headers={'Content-type': content_type})
+
+    if resp.status_code in [200, 201]:
+        logging.info("Data successfully submitted to BETYdb.")
+        return resp.json()['data']['ids_of_new_traits']
+    else:
+        logging.error("Error submitting data to BETYdb: %s -- %s", resp.status_code, resp.reason)
+        resp.raise_for_status()
+
+    return None
 
 def _get_plot_name(name):
     """Looks in the parameter and returns a plot name.
@@ -78,7 +140,9 @@ def _get_plot_name(name):
             parts = low_name.split(plot_separator)
             parts_len = len(parts)
             if parts_len > 1:
-                return parts[1]
+                start_pos = len(parts[0]) + len(plot_separator)
+                end_pos = start_pos + len(parts[1])
+                return one_name[start_pos:end_pos]
 
     return ""
 
@@ -142,7 +206,7 @@ def get_default_trait(trait_name):
     global TRAIT_NAME_MAP
 
     if trait_name in TRAIT_NAME_ARRAY_VALUE:
-        return TRAIT_NAME_ARRAY_VALUE[trait_name]
+        return []   # Return an empty list when the name matches
     elif trait_name in TRAIT_NAME_MAP:
         return TRAIT_NAME_MAP[trait_name]
     return ""
@@ -161,7 +225,6 @@ def get_traits_table():
 
     return (fields, traits)
 
-# TODO: Keep these in terrautils.bety instead
 def generate_traits_list(traits):
     """Returns an array of trait values
 
@@ -394,7 +457,7 @@ class CanopyCover(TerrarefExtractor):
             csv_file.write(data + "\n")
 
             wrote_file = True
-        except Exception as ex:     # pylint: disable=broad-except
+        except Exception as ex:
             self.log_error(resource, "Exception while writing CSV file: '" + filename + "'")
             self.log_error(resource, "Exception: " + str(ex))
         finally:
@@ -404,7 +467,6 @@ class CanopyCover(TerrarefExtractor):
         return wrote_file
 
     # Entry point for checking how message should be handled
-    # pylint: disable=too-many-arguments
     def check_message(self, connector, host, secret_key, resource, parameters):
         """Determines if we want to handle the received message
 
@@ -451,16 +513,18 @@ class CanopyCover(TerrarefExtractor):
         citation_auth_override, citation_title_override, citation_year_override = None, None, None
         config_specie = None
 
+        store_in_geostreams = True
+        store_in_betydb = True
+        create_csv_files = True
+        out_geo = None
+        out_csv = None
+
         # Find the files we're interested in
         imagefiles = self.find_image_files(resource['local_paths'])
         num_image_files = len(imagefiles)
         if num_image_files <= 0:
             self.log_skip(resource, "No image files with geographic boundaries found")
             return
-        if num_image_files > 1:
-            self.log_info(resource, "Multiple image files were found, only using first found")
-            (key, value) = imagefiles.popitem()
-            imagefiles = {key : value}
 
         # Setup overrides and get the restore function
         restore_fn = self.setup_overrides(host, secret_key, resource)
@@ -470,12 +534,20 @@ class CanopyCover(TerrarefExtractor):
 
         try:
             # Get the best timestamp
-            timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
-            if "__" in timestamp:
-                datestamp = timestamp.split("__")[0]
+            timestamp = terraref_timestamp_to_iso(self.find_timestamp(resource['dataset_info']['name']))
+            if 'T' in timestamp:
+                datestamp = timestamp.split('T')[0]
             else:
                 datestamp = timestamp
-            _, experiment_name, _ = self.get_season_and_experiment(timestamp, self.sensor_name)
+                timestamp += 'T12:00:00'
+            if timestamp.find('T') > 0 and timestamp.rfind('-') > 0 and timestamp.find('T') < timestamp.rfind('-'):
+                # Convert to local time. We can do this due to site definitions having
+                # the time offsets as part of their definition
+                localtime = timestamp[0:timestamp.rfind('-')]
+            else:
+                localtime = timestamp
+            _, experiment_name, _ = self.get_season_and_experiment(timestamp_to_terraref(timestamp),
+                                                                   self.sensor_name)
 
             # Build up a list of image IDs
             image_ids = {}
@@ -487,41 +559,39 @@ class CanopyCover(TerrarefExtractor):
                                                             (image_name == res_file['filename']):
                             image_ids[image_name] = res_file['id']
 
-            file_filters = None
+            file_filters = self.get_file_filters()
             if self.experiment_metadata:
-                if 'extractors' in self.experiment_metadata:
-                    extractor_json = self.experiment_metadata['extractors']
-                    if 'canopyCover' in extractor_json:
-                        if 'citationAuthor' in extractor_json['canopyCover']:
-                            citation_auth_override = extractor_json['canopyCover']['citationAuthor']
-                        if 'citationYear' in extractor_json['canopyCover']:
-                            citation_year_override = extractor_json['canopyCover']['citationYear']
-                        if 'citationTitle' in extractor_json['canopyCover']:
-                            citation_title_override = extractor_json['canopyCover']['citationTitle']
-                    if self.sensor_name in extractor_json:
-                        if 'filters' in extractor_json[self.sensor_name]:
-                            file_filters = extractor_json[self.sensor_name]['filters']
-                            if ',' in file_filters:
-                                file_filters = file_filters.split(',')
-                            elif file_filters:
-                                file_filters = [file_filters]
+                extractor_json = self.find_extractor_json()
+                if extractor_json:
+                    if 'citationAuthor' in extractor_json:
+                        citation_auth_override = extractor_json['citationAuthor']
+                    if 'citationYear' in extractor_json:
+                        citation_year_override = extractor_json['citationYear']
+                    if 'citationTitle' in extractor_json:
+                        citation_title_override = extractor_json['citationTitle']
+                    if 'noGeostreams' in extractor_json:
+                        store_in_geostreams = False
+                    if 'noBETYdb' in extractor_json:
+                        store_in_betydb = False
+                    if 'noCSV' in extractor_json:
+                        create_csv_files = False
 
                 if 'germplasmName' in self.experiment_metadata:
                     config_specie = self.experiment_metadata['germplasmName']
 
             # Setup for the extracted plot canopy cover
-            sensor_name = "canopybyshape"
+            sensor_name = "canopybyplot"
 
             # Create the output files
             rootdir = self.sensors.create_sensor_path(timestamp, sensor=sensor_name, ext=".csv",
                                                       opts=[experiment_name])
-            out_csv = os.path.splitext(rootdir)[0] + "_canopycover.csv"
-            out_geo = os.path.splitext(rootdir)[0] + "_canopycover_geo.csv"
-
-            self.log_info(resource, "Writing Shapefile CSV to %s" % out_csv)
             (fields, traits) = get_traits_table()
 
-            self.log_info(resource, "Writing Geostreams CSV to %s" % out_geo)
+            if create_csv_files:
+                out_geo = os.path.splitext(rootdir)[0] + "_canopycover_geo.csv"
+                self.log_info(resource, "Writing Geostreams CSV to %s" % out_geo)
+                out_csv = os.path.splitext(rootdir)[0] + "_canopycover.csv"
+                self.log_info(resource, "Writing Shapefile CSV to %s" % out_csv)
 
             # Setup default trait values
             if not config_specie is None:
@@ -535,17 +605,18 @@ class CanopyCover(TerrarefExtractor):
             else:
                 traits['citation_year'] = datestamp[:4]
 
+            bety_csv_header = ','.join(map(str, fields))
+            geo_csv_header = ','.join(['site', 'trait', 'lat', 'lon', 'dp_time',
+                                       'source', 'value', 'timestamp'])
+
             # Loop through all the images (of which there should be one - see above)
+            geo_rows = []
+            bety_rows = []
             for filename in imagefiles:
 
                 # Check if we're filtering files
                 if file_filters:
-                    filtered = False
-                    for one_filter in file_filters:
-                        if one_filter in os.path.basename(filename):
-                            filtered = True
-                            break
-                    if not filtered:
+                    if not file_filtered_in(filename, file_filters):
                         continue
 
                 try:
@@ -571,26 +642,47 @@ class CanopyCover(TerrarefExtractor):
                                          'Canopy Cover',
                                          str(centroid.GetX()),
                                          str(centroid.GetY()),
-                                         timestamp,
+                                         localtime,
                                          host.rstrip('/') + '/files/' + image_clowder_id,
                                          str(cc_val),
                                          datestamp])
-                    csv_header = ','.join(['site', 'trait', 'lat', 'lon', 'dp_time',
-                                           'source', 'value', 'timestamp'])
-                    self.write_csv_file(resource, out_geo, csv_header, csv_data)
+                    if out_geo:
+                        self.write_csv_file(resource, out_geo, geo_csv_header, csv_data)
+                    if store_in_geostreams:
+                        geo_rows.append(csv_data)
 
                     traits['canopy_cover'] = str(cc_val)
                     traits['site'] = plot_name
-                    traits['local_datetime'] = timestamp
+                    traits['local_datetime'] = localtime
                     trait_list = generate_traits_list(traits)
                     csv_data = ','.join(map(str, trait_list))
-                    csv_header = ','.join(map(str, fields))
-                    self.write_csv_file(resource, out_csv, csv_header, csv_data)
+                    if out_csv:
+                        self.write_csv_file(resource, out_csv, bety_csv_header, csv_data)
+                    if store_in_betydb:
+                        bety_rows.append(csv_data)
 
                 except Exception as ex:
                     self.log_error(resource, "Error generating canopy cover for %s" % plot_name)
                     self.log_error(resource, "    exception: %s" % str(ex))
                     continue
+
+                # Only process the first file that's valid
+                if num_image_files > 1:
+                    self.log_info(resource, "Multiple image files were found, only using first found")
+                    break
+
+            # Upload any geostreams or betydb data
+            if store_in_geostreams:
+                if geo_rows:
+                    update_geostreams(connector, host, secret_key, geo_csv_header, geo_rows)
+                else:
+                    self.log_info(resource, "No geostreams data was generated to upload")
+
+            if store_in_betydb:
+                if bety_rows:
+                    update_betydb(bety_csv_header, bety_rows)
+                else:
+                    self.log_info(resource, "No BETYdb data was generated to upload")
 
             # Update this dataset with the extractor info
             dataset_id = self.get_dataset_id(host, secret_key, resource, dataset_name)

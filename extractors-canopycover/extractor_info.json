@@ -2,7 +2,7 @@
   "@context": "http://clowder.ncsa.illinois.edu/contexts/extractors.jsonld",
   "name": "terra.dronepipeline.canopycover",
   "version": "1.0",
-  "description": "Generates canopy cover by shapefile plot",
+  "description": "Generates canopy cover for plot images",
   "author": "Chris Schnaufer <schnaufer@email.arizona.edu>",
   "contributors": [],
   "contexts": [],
