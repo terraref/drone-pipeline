@@ -56,7 +56,7 @@ TRAIT_NAME_MAP = {
     'method': 'Canopy Cover Estimation from RGB images'
 }
 
-# Used to generate random nuymbers
+# Used to generate random numbers
 RANDOM_GENERATOR = None
 
 def update_geostreams(connector, host, secret_key, geo_csv_header, geo_rows):
@@ -640,8 +640,8 @@ class CanopyCover(TerrarefExtractor):
                     # Write the datapoint geographically and otherwise
                     csv_data = ','.join([plot_name,
                                          'Canopy Cover',
-                                         str(centroid.GetX()),
                                          str(centroid.GetY()),
+                                         str(centroid.GetX()),
                                          localtime,
                                          host.rstrip('/') + '/files/' + image_clowder_id,
                                          str(cc_val),
