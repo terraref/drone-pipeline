@@ -64,7 +64,7 @@ def check_delete_folder(folder):
             logging.debug("  %s", ex.message)
 
 def exif_tags_to_timestamp(exif_tags):
-    """Looks up the origin timestmp and a timestamp offset in the exit tags and returns
+    """Looks up the origin timestamp and a timestamp offset in the exit tags and returns
        a datetime objext
 
     Args:
