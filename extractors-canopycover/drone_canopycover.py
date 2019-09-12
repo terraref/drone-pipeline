@@ -120,7 +120,7 @@ def _get_plot_name(name):
     """Looks in the parameter and returns a plot name.
 
        Expects the plot name to be identified by having "By Plot" embedded in the name.
-       The plot name is then surrounded by " - " characters. That valus is then returned.
+       The plot name is then surrounded by " - " characters. That value is then returned.
 
     Args:
         name(iterable or string): An array/list of names or a single name string
