@@ -46,7 +46,7 @@ MAX_FILE_OPEN_SLEEP_SEC = 30
 # Array of trait names that should have array values associated with them
 TRAIT_NAME_ARRAY_VALUE = ['canopy_cover', 'site']
 
-# Mapping of default trait names to fixecd values
+# Mapping of default trait names to fixed values
 TRAIT_NAME_MAP = {
     'access_level': '2',
     'species': 'Unknown',
@@ -268,7 +268,7 @@ class CanopyCover(TerrarefExtractor):
     """Extractor for calculating canopy cover for an image
 
        The extractor updates the metadata in Clowder with the canopy cover value. Also
-       writes the value to a CSV fils
+       writes the value to a CSV file
     """
     def __init__(self):
         """Initialization of class instance.
@@ -351,6 +351,8 @@ class CanopyCover(TerrarefExtractor):
                             poly.AssignSpatialReference(ref_sys)
 
                         imagefiles[onefile] = {'bounds' : poly}
+                    else:
+                        self.log_info("Image file is not georeferenced and is being skipped: " + onefile)
 
         # Return what we've found
         return imagefiles
