@@ -10,9 +10,7 @@ import random
 import time
 import csv
 import requests
-import osr
 import numpy as np
-import gdal
 
 from osgeo import ogr
 
@@ -26,6 +24,9 @@ from terrautils.sensors import STATIONS
 from terrautils.metadata import prepare_pipeline_metadata
 from terrautils.betydb import get_bety_key, get_bety_api
 from terrautils.geostreams import create_datapoint_with_dependencies
+
+import osr
+import gdal
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
@@ -301,11 +302,12 @@ class CanopyCover(TerrarefExtractor):
 
     # Look through the file list to find the files we need
     # pylint: disable=too-many-locals,too-many-nested-blocks
-    def find_image_files(self, files):
+    def find_image_files(self, files, resource):
         """Finds files that are needed for extracting plots from an orthomosaic
 
         Args:
             files(list): the list of file to look through and access
+            resource(dict): dictionary containing the resources associated with the request
 
         Returns:
             Returns a dict of georeferenced image files (indexed by filename and containing an
@@ -352,7 +354,7 @@ class CanopyCover(TerrarefExtractor):
 
                         imagefiles[onefile] = {'bounds' : poly}
                     else:
-                        self.log_info("Image file is not georeferenced and is being skipped: " + onefile)
+                        self.log_info(resource, "Image file is not georeferenced and is being skipped: " + onefile)
 
         # Return what we've found
         return imagefiles
@@ -522,7 +524,7 @@ class CanopyCover(TerrarefExtractor):
         out_csv = None
 
         # Find the files we're interested in
-        imagefiles = self.find_image_files(resource['local_paths'])
+        imagefiles = self.find_image_files(resource['local_paths'], resource)
         num_image_files = len(imagefiles)
         if num_image_files <= 0:
             self.log_skip(resource, "No image files with geographic boundaries found")
@@ -585,7 +587,8 @@ class CanopyCover(TerrarefExtractor):
             sensor_name = "canopybyplot"
 
             # Create the output files
-            rootdir = self.sensors.create_sensor_path(timestamp, sensor=sensor_name, ext=".csv",
+            rootdir = self.sensors.create_sensor_path(timestamp_to_terraref(timestamp),
+                                                      sensor=sensor_name, ext=".csv",
                                                       opts=[experiment_name])
             (fields, traits) = get_traits_table()
 
@@ -676,13 +679,19 @@ class CanopyCover(TerrarefExtractor):
             # Upload any geostreams or betydb data
             if store_in_geostreams:
                 if geo_rows:
-                    update_geostreams(connector, host, secret_key, geo_csv_header, geo_rows)
+                    try:
+                        update_geostreams(connector, host, secret_key, geo_csv_header, geo_rows)
+                    except Exception as ex:
+                        self.log_error(resource, "Exception caught while updating geostreams: " + str(ex))
                 else:
                     self.log_info(resource, "No geostreams data was generated to upload")
 
             if store_in_betydb:
                 if bety_rows:
-                    update_betydb(bety_csv_header, bety_rows)
+                    try:
+                        update_betydb(bety_csv_header, bety_rows)
+                    except Exception as ex:
+                        self.log_error(resource, "Exception caught while updating betydb: " + str(ex))
                 else:
                     self.log_info(resource, "No BETYdb data was generated to upload")
 
