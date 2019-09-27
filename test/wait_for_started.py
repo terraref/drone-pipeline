@@ -49,10 +49,14 @@ for i in range(0, CONTAINER_ID_LOOP_MAX):
             break
 
 if dockerId is None:
-    bash_cmd = "docker ps"
+    bash_cmd = "docker ps -a"
     cmd_res = subprocess.check_output(["/bin/bash", "-c", bash_cmd])
     res = str(cmd_res)
     print("Current docker containers: "+res)
+    bash_cmd = "docker images"
+    cmd_res = subprocess.check_output(["/bin/bash", "-c", bash_cmd])
+    res = str(cmd_res)
+    print("Current docker images: "+res)
     raise RuntimeError("Unable to find Docker ID of extractor: '" + dockerizedName + "'")
 
 # Loop here until we detect the end of processing

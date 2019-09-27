@@ -40,7 +40,7 @@ matrix:
       env: EXTRACTOR_BRANCH=clipbyshape EXTRACTOR_RUN_EXTRA_PARAMS="-e 'MOUNTED_PATHS={\"/home/extractor/sites\":\"/home/extractor/sites\"}'" TEST_SOURCE_ARCHIVE=gdrive:1_kYL1gSb1wmiokIYN3dgU8baVPS01R9K/clipbyshape_test_data.tar TEST_COMPARE_ARCHIVE=gdrive:1eCQhlNtMlKqB73REmbrSAWE4pDDXO9IM/clipbyshape_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:clipbyshape RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=.tif RESULT_DATASET_FILTER="- (.+?) -" VALIDATION_PARAMS= SILENCE_FOLDER_LISTING=true
       if: branch = master OR branch = develop OR branch =~ /.*clipbyshape.*/ OR branch =~ /.*travis.*/
     - name: "Canopy Cover Value Extractor"
-      env: EXTRACTOR_BRANCH=canopycover EXTRACTOR_RUN_EXTRA_PARAMS= TEST_SOURCE_ARCHIVE=gdrive:1xqwD3KGNjSXq01tTJgeM-JHQiJbUH4pg/canopycover_test_data.tar TEST_COMPARE_ARCHIVE=gdrive:1uw4judndF8b50oSC8_Qhk5znH18iK-zR/canopycover_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:canopycover RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH= RESULT_DATASET_FILTER= VALIDATION_PARAMS= SILENCE_FOLDER_LISTING=
+      env: EXTRACTOR_BRANCH=canopycover EXTRACTOR_RUN_EXTRA_PARAMS= TEST_SOURCE_ARCHIVE=gdrive:1xqwD3KGNjSXq01tTJgeM-JHQiJbUH4pg/canopycover_test_data.tar TEST_COMPARE_ARCHIVE=gdrive:1uw4judndF8b50oSC8_Qhk5znH18iK-zR/canopycover_results.tar EXTRACTOR_MASTER_DOCKERHUB_NAME=chrisatua/extractors:canopycover RESULT_DATASET_NAME= RESULT_DATASET_FILE_MATCH=.csv RESULT_DATASET_FILTER= VALIDATION_PARAMS= SILENCE_FOLDER_LISTING=
       if: branch = master OR branch = develop OR branch =~ /.*canopycover.*/ OR branch =~ /.*travis.*/
 
 # Secure stuff: travis encrypt --com '<var>=<value>'
