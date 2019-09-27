@@ -57,6 +57,10 @@ if dockerId is None:
     cmd_res = subprocess.check_output(["/bin/bash", "-c", bash_cmd])
     res = str(cmd_res)
     print("Current docker images: "+res)
+    bash_cmd = "docker logs " + CONTAINER_NAMED
+    cmd_res = subprocess.check_output(["/bin/bash", "-c", bash_cmd])
+    res = str(cmd_res)
+    print("Docker image output: "+res)
     raise RuntimeError("Unable to find Docker ID of extractor: '" + dockerizedName + "'")
 
 # Loop here until we detect the end of processing
