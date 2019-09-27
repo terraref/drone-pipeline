@@ -58,6 +58,7 @@ if dockerId is None:
     res = str(cmd_res)
     print("Current docker images: "+res)
     bash_cmd = "docker logs " + CONTAINER_NAMED
+    print("Bash command: " + bash_cmd)
     cmd_res = subprocess.check_output(["/bin/bash", "-c", bash_cmd])
     res = str(cmd_res)
     print("Docker image output: "+res)
