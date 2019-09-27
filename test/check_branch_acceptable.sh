@@ -39,7 +39,7 @@ fi
 NEW_FOLDER=$3
 if [[ ! -z "${NEW_FOLDER}" ]]; then
     cd "${NEW_FOLDER}"
-fi
+fi;
 
 # Break the branch into parts so that we can search them
 if [[ "${CUR_BRANCH}" = *"-"* ]]; then
@@ -52,7 +52,22 @@ else
     BRANCH_PARTS=("${CUR_BRANCH}")
 fi
 
-# Loop through the folders looking for a match
+# Also prepare a backup in case the main match fails
+NEW_BRANCH=$2
+if [[ ! -z "${NEW_BRANCH}" ]]; then
+    if [[ "${NEW_BRANCH}" = *"-"* ]]; then
+        NEW_BRANCH_PARTS=$(echo "${NEW_BRANCH}" | tr "-" "\n")
+    elif [[ "${NEW_BRANCH}" = *"_"* ]]; then
+        NEW_BRANCH_PARTS=$(echo "${NEW_BRANCH}" | tr "_" "\n")
+    elif [[ "${NEW_BRANCH}" = *" "* ]]; then
+        NEW_BRANCH_PARTS=$(echo "${NEW_BRANCH}" | tr " " "\n")
+    else
+        NEW_BRANCH_PARTS=("${NEW_BRANCH}")
+    fi
+fi
+
+# Loop through the folders looking for a match. Return when the main match
+# works
 for FOLDER in * ;
     do if [ -d "${FOLDER}" ]; then
         for B in $BRANCH_PARTS
@@ -66,8 +81,24 @@ for FOLDER in * ;
                 exit 0
             fi
         done;
+        for N in $NEW_BRANCH_PARTS
+        do
+            if [[ "${FOLDER}" = *"${N}"* ]]; then
+                if [[ ! -z "${NEW_FOLDER}" ]]; then
+                    ALTERNATE_FOLDER="${NEW_FOLDER}/${FOLDER}"
+                else
+                    ALTERNATE_FOLDER="${FOLDER}"
+                fi
+            fi
+        done;
     fi;
 done
+
+# IF we are here we couldn't find a match for the main folder.
+if [[ ! -z "${ALTERNATE_FOLDER}" ]]; then
+    echo "${ALTERNATE_FOLDER}"
+    exit 0
+fi
 
 # We were not able to find anything
 if [[ -z "${NEW_FOLDER}" ]]; then
