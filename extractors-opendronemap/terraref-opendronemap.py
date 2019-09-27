@@ -4,18 +4,23 @@
 # pylint: disable=missing-docstring
 
 import os
+import sys
 import subprocess
 import tempfile
+import datetime
 import json
 import gzip
 import shutil
 import logging
+import piexif
 
+import pyclowder.datasets as ds
 from pyclowder.files import upload_metadata
 from terrautils.extractors import TerrarefExtractor, build_metadata, \
      build_dataset_hierarchy_crawl, upload_to_dataset, file_exists, \
-     check_file_in_dataset, confirm_clowder_info, timestamp_to_terraref
+     check_file_in_dataset, timestamp_to_terraref, get_datasetid_by_name
 from terrautils.sensors import Sensors, STATIONS
+from terrautils.metadata import prepare_pipeline_metadata
 
 from opendm import config
 
@@ -38,6 +43,10 @@ if 'ua-mac' in STATIONS:
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.shp'
                                     }
 
+# EXIF tags to look for
+EXIF_ORIGIN_TIMESTAMP = 36867         # Capture timestamp
+EXIF_TIMESTAMP_OFFSET = 36881         # Timestamp UTC offset (general)
+EXIF_ORIGIN_TIMESTAMP_OFFSET = 36881  # Capture timestamp UTC offset
 
 # Deletes a folder tree and ensures the top level folder is deleted as well
 def check_delete_folder(folder):
@@ -54,6 +63,68 @@ def check_delete_folder(folder):
             logging.debug("Execption deleting folder %s", folder)
             logging.debug("  %s", ex.message)
 
+def exif_tags_to_timestamp(exif_tags):
+    """Looks up the origin timestamp and a timestamp offset in the exit tags and returns
+       a datetime objext
+
+    Args:
+        exif_tags(dict): The exif tags to search for timestamp information
+
+    Return:
+        Returns the origin timestamp when found. The return timestamp is adjusted for UTF if
+        an offset is found. None is returned if a valid timestamp isn't found.
+    """
+    cur_stamp, cur_offset = (None, None)
+
+    def convert_and_clean_tag(value):
+        """Internal helper function for handling EXIF tag values. Tests for an empty string after
+           stripping colons, '+', '-', and whitespace [the spec is unclear if a +/- is needed when
+           the timestamp offset is unknown (and spaces are used)].
+        Args:
+            value(bytes or str): The tag value
+        Return:
+            Returns the cleaned up, and converted from bytes, string. Or None if the value is empty
+            after stripping above characters and whitespace.
+        """
+        if not value:
+            return None
+
+        # Convert bytes to string
+        if isinstance(value, bytes) and sys.version_info >= (3, 0):
+            value = value.decode('UTF-8').strip()
+        else:
+            value = value.strip()
+
+        # Check for an empty string after stripping colons
+        if value:
+            if not value.replace(":", "").replace("+:", "").replace("-", "").strip():
+                value = None
+
+        return None if not value else value
+
+    # Process the EXIF data
+    if EXIF_ORIGIN_TIMESTAMP in exif_tags:
+        cur_stamp = convert_and_clean_tag(exif_tags[EXIF_ORIGIN_TIMESTAMP])
+    if not cur_stamp:
+        return None
+
+    if EXIF_ORIGIN_TIMESTAMP_OFFSET in exif_tags:
+        cur_offset = convert_and_clean_tag(exif_tags[EXIF_ORIGIN_TIMESTAMP_OFFSET])
+    if not cur_offset and EXIF_TIMESTAMP_OFFSET in exif_tags:
+        cur_offset = convert_and_clean_tag(exif_tags[EXIF_TIMESTAMP_OFFSET])
+
+    # Format the string to a timestamp and return the result
+    try:
+        if not cur_offset:
+            cur_ts = datetime.datetime.strptime(cur_stamp, "%Y:%m:%d %H:%M:%S")
+        else:
+            cur_offset = cur_offset.replace(":", "")
+            cur_ts = datetime.datetime.strptime(cur_stamp + cur_offset, "%Y:%m:%d %H:%M:%S%z")
+    except Exception as ex:     # pylint: disable=broad-except
+        cur_ts = None
+        logging.debug(ex.message)
+
+    return cur_ts
 
 # Class for performing a full field mosaic stitching using Clowder's opendronemap extractor
 # This class is mostly a wrapper around the OpenDroneMapStitch extractor
@@ -94,6 +165,33 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
     def sensor_name(self):
         return 'rgb_fullfield'
 
+    # pylint: disable=too-many-arguments
+    def update_dataset_extractor_metadata(self, connector, host, key, dsid, metadata,\
+                                          extractor_name):
+        """Adds or replaces existing dataset metadata for the specified extractor
+
+        Args:
+            connector(obj): the message queue connector instance
+            host(str): the URI of the host making the connection
+            key(str): used with the host API
+            dsid(str): the dataset to update
+            metadata(str): the metadata string to update the dataset with
+            extractor_name(str): the name of the extractor to associate the metadata with
+        """
+        meta = build_metadata(host, self.extractor_info, dsid, metadata, "dataset")
+
+        try:
+            md = ds.download_metadata(connector, host, key, dsid, extractor_name)
+            md_len = len(md)
+        except Exception as ex:     # pylint: disable=broad-except
+            md_len = 0
+            logging.debug(ex.message)
+
+        if md_len > 0:
+            ds.remove_metadata(connector, host, key, dsid, extractor_name)
+
+        ds.upload_metadata(connector, host, key, dsid, meta)
+
     # Called by OpenDroneMapStitch during the __init__ call
     # So we override it to make sure things happen the way we want them to
     # pylint: disable=arguments-differ
@@ -107,6 +205,50 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         TerrarefExtractor.setup(self, sensor=self.sensor_name)
         OpenDroneMapStitch.dosetup(self, odm_args)
 
+    def find_timestamp(self, resource, text):
+        """Looks up a timestamp based upon EXIF data. Uses default mechanisms if a
+           timestamp can't be found.
+
+        Args:
+            resource(dict): dictionary containing the resources associated with the request
+            text(str): optional text string to search for a time stamp if we can't use EXIF data
+
+        Return:
+            A timestamp in ISO 8601 long format or None if one isn't found
+        """
+        # pylint: disable=too-many-nested-blocks
+        first_stamp = None
+        try:
+            # Get all the image files
+            paths = list()
+            for localfile in resource['local_paths']:
+                # deal with mounted/local files
+                if localfile.lower().endswith('.jpg'):
+                    paths.append(localfile)
+                else:
+                    # deal with downloaded files
+                    for image in resource['files']:
+                        if 'filepath' in image and image['filepath'] == localfile:
+                            if image['filename'].lower().endswith('.jpg'):
+                                paths.append(image['filename'])
+
+            # Find a timestamp to use by looking at EXIF data
+            for input_path in paths:
+                tags_dict = piexif.load(input_path)
+                if tags_dict and "Exif" in tags_dict:
+                    cur_stamp = exif_tags_to_timestamp(tags_dict["Exif"])
+                    if cur_stamp:
+                        first_stamp = cur_stamp if first_stamp is None or cur_stamp < first_stamp \
+                                                                                else first_stamp
+
+        except Exception as ex:     # pylint: disable=broad-except
+            logging.debug(ex.message)
+
+        if first_stamp:
+            return first_stamp.isoformat()
+
+        return super(ODMFullFieldStitcher, self).find_timestamp(text)
+
     # Called to see if we want the message
     # Hand it through to the OpenDroneMapStitch since it knows what it wants
     # pylint: disable=too-many-arguments
@@ -114,7 +256,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         """Explicitly calls through to our OpenDroneMapStitch parent instance
 
         Args:
-             connector(obj): the message queue connector instance
+            connector(obj): the message queue connector instance
             host(str): the URI of the host making the connection
             secret_key(str): used with the host API
             resource(dict): dictionary containing the resources associated with the request
@@ -232,6 +374,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                              sensor=sensor_type)
 
                         sensor_leaf_name = new_sensor.get_display_name() + ' - ' + timestamp
+                        ds_exists = get_datasetid_by_name(host, secret_key, sensor_leaf_name)
                         new_dsid = build_dataset_hierarchy_crawl(host, secret_key,
                                                                  self.clowder_user,
                                                                  self.clowder_pass,
@@ -242,6 +385,12 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                                                  timestamp[8:10],
                                                                  leaf_ds_name=sensor_leaf_name)
 
+                        if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
+                            self.update_dataset_extractor_metadata(connector, host, secret_key,
+                                                                   new_dsid,
+                                                                   prepare_pipeline_metadata(self.experiment_metadata),
+                                                                   self.extractor_info['name'])
+
                         self.sensor_dsid_map[sensor_type] = new_dsid
                         cur_dataset_id = new_dsid
 
@@ -250,25 +399,25 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                                         cur_dataset_id, resultfile, remove=False)
 
                 # If the files is already in the dataset, determine if we need to delete it first
-                if self.overwrite and file_in_dataset:
+                if self.overwrite_ok and file_in_dataset:
                     # Delete the file from the dataset before uploading the new copy
                     self.log_info(resource, "Removing existing file in dataset " + resultfile)
                     check_file_in_dataset(connector, host, secret_key, cur_dataset_id,
                                           resultfile, remove=True)
-                elif not self.overwrite and file_in_dataset:
+                elif not self.overwrite_ok and file_in_dataset:
                     # We won't overwrite an existing file
                     self.log_skip(resource, "Not overwriting existing file in dataset " + resultfile)
                     continue
 
                 # Upload the file to the dataset
-                dsid = upload_to_dataset(connector, host, self.clowder_user, self.clowder_pass,
-                                         cur_dataset_id, resultfile)
+                fid = upload_to_dataset(connector, host, self.clowder_user, self.clowder_pass,
+                                        cur_dataset_id, resultfile)
 
                 # Generate our metadata
-                meta = build_metadata(host, self.extractor_info, dsid, content, 'file')
+                meta = build_metadata(host, self.extractor_info, fid, content, 'file')
 
                 # Upload the meadata to the dataset
-                upload_metadata(connector, host, secret_key, dsid, meta)
+                upload_metadata(connector, host, secret_key, fid, meta)
 
                 self.created += 1
                 self.bytes += os.path.getsize(resultfile)
@@ -298,8 +447,6 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             parameters = json.loads(parameters)
         if isinstance(parameters, unicode):
             parameters = json.loads(str(parameters))
-        #if 'parameters' in parameters:
-        #    parameters = parameters['parameters']
 
         # Array of files to upload once processing is done
         self.files_to_upload = []
@@ -313,31 +460,17 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         sensor_type = "rgb"
 
         # Initialize more local variables
-        dataset_name = parameters["datasetname"]
         scan_name = parameters["scan_type"] if "scan_type" in parameters else ""
 
-        # Get the best username, password, and space
-        old_un, old_pw, old_space = (self.clowder_user, self.clowder_pass, self.clowderspace)
-        self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context()
-
-        # Ensure that the clowder information is valid
-        if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
-                                    self.clowder_pass):
-            self.log_error(resource, "Clowder configuration is invalid. Not processing " +\
-                                     "request")
-            self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
+        # Setup overrides and get the restore function
+        restore_fn = self.setup_overrides(host, secret_key, resource)
+        if not restore_fn:
             self.end_message(resource)
             return
 
-        # Change the base path of files to include the user by tweaking the sensor's value
-        _, new_base = self.get_username_with_base_path(host, secret_key, resource['id'],
-                                                       self.sensors.base)
-        sensor_old_base = self.sensors.base
-        self.sensors.base = new_base
-
         try:
             # Get the best timestamp
-            timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
+            timestamp = timestamp_to_terraref(self.find_timestamp(resource, resource['dataset_info']['name']))
             season_name, experiment_name, _ = self.get_season_and_experiment(timestamp,
                                                                              self.sensor_name)
 
@@ -375,13 +508,9 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                 full_exists = True
             if file_exists(out_png):
                 png_exists = True
-            if thumb_exists and med_exists and full_exists and not self.overwrite:
+            if thumb_exists and med_exists and full_exists and not self.overwrite_ok:
                 if  png_exists:
                     self.log_skip(resource, "all outputs already exist")
-                    # Restore anything we need to before returning
-                    self.clowder_user, self.clowder_pass, self.clowderspace = \
-                                                                    (old_un, old_pw, old_space)
-                    self.sensors.base = sensor_old_base
                     return
                 else:
                     self.log_info(resource, "all outputs already exist (10% PNG thumbnail must" \
@@ -430,6 +559,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
             # Get dataset ID or create it, creating parent collections as needed
             leaf_ds_name = self.sensors.get_display_name() + ' - ' + timestamp
+            ds_exists = get_datasetid_by_name(host, secret_key, leaf_ds_name)
             target_dsid = build_dataset_hierarchy_crawl(host, secret_key, self.clowder_user,
                                                         self.clowder_pass, self.clowderspace,
                                                         season_name, experiment_name,
@@ -437,6 +567,11 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
                                                         timestamp[:4], timestamp[5:7],
                                                         timestamp[8:10],
                                                         leaf_ds_name=leaf_ds_name)
+
+            if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
+                self.update_dataset_extractor_metadata(connector, host, secret_key, target_dsid,
+                                                       prepare_pipeline_metadata(self.experiment_metadata),
+                                                       self.extractor_info['name'])
 
             # Store our dataset mappings for possible later use
             self.sensor_dsid_map = {sensor_type : target_dsid}
@@ -449,7 +584,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
             content = {
                 "comment": "This stitched file is computed using OpenDroneMap. Change the" \
                            " parameters in extractors-opendronemap.txt to change the results.",
-                "file_ids": ", ".join(file_ids)
+                "source_file_ids": ", ".join(file_ids)
             }
 
             # If we newly created these files, upload to Clowder
@@ -499,8 +634,8 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         finally:
             # We are done, restore fields we've modified (also be sure to restore fields in the
             # early returns in the code above)
-            self.clowder_user, self.clowder_pass, self.clowderspace = (old_un, old_pw, old_space)
-            self.sensors.base = sensor_old_base
+            if restore_fn:
+                restore_fn()
             self.end_message(resource)
 
 if __name__ == "__main__":

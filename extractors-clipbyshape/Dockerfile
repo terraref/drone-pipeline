@@ -1,5 +1,5 @@
-FROM terraref/terrautils:1.4
-MAINTAINER Chris Schnaufer <schnaufer@email.arizona.edu>
+FROM terraref/terrautils:1.5
+LABEL maintainer="Chris Schnaufer <schnaufer@email.arizona.edu>"
 
 # Install any users
 RUN useradd -u 49044 extractor \
@@ -14,9 +14,10 @@ RUN apt install -y imagemagick gdal-bin libgdal-dev
 
 RUN pip install --upgrade pip 
 
-RUN pip install -U numpy && \
-    pip install -U dbfread && \
-    pip install gdal  && \
+RUN pip install --upgrade numpy && \
+    pip install --upgrade dbfread && \
+    pip install --upgrade cryptography && \
+    pip install gdal \
     pip install --upgrade --ignore-installed enum34 terrautils
 
 # command to run when starting docker

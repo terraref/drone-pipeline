@@ -1,6 +1,5 @@
-FROM clowder/extractors-opendronemap:2.0
-
-LABEL maintainer="Chris Schnaufer <chris.schnaufer@email.arizona.edu>"
+FROM terraref/terrautils:1.5
+LABEL maintainer="Chris Schnaufer <schnaufer@email.arizona.edu>"
 
 # Install any users
 RUN useradd -u 49044 extractor \
@@ -10,13 +9,20 @@ RUN useradd -u 49044 extractor \
 RUN chown -R extractor /home/extractor \
     && chgrp -R extractor /home/extractor 
 
-RUN pip install -U pip && \
-    pip install -U numpy && \
-    pip install -U pyclowder && \
-    pip install -U utm influxdb laspy piexif && \
-    pip install --ignore-installed enum34 terrautils
+# install and upgrade packages
+RUN apt install -y imagemagick gdal-bin libgdal-dev
 
-# Copy our source files
+# install and upgrade packages
+RUN pip install --upgrade pip 
+
+RUN pip install --upgrade numpy && \
+    pip install --upgrade dbfread && \
+    pip install --upgrade pyclowder && \
+    pip install gdal  && \
+    pip install --upgrade cryptography && \
+    pip install --upgrade --ignore-installed enum34 terrautils
+
+# command to run when starting docker
 COPY entrypoint.sh extractor_info.json *.py /home/extractor/
 
 USER extractor
@@ -29,6 +35,5 @@ CMD ["extractor"]
 # executed by entrypoint.sh
 ENV RABBITMQ_EXCHANGE="terra" \
     RABBITMQ_VHOST="%2F" \
-    RABBITMQ_QUEUE="terra.dronepipeline.opendronemap" \
-    MAIN_SCRIPT="terraref-opendronemap.py" \
-    PYTHONPATH="${PYTHONPATH}:/code"
+    RABBITMQ_QUEUE="terra.dronepipeline.canopycover" \
+    MAIN_SCRIPT="drone_canopycover.py"

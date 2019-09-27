@@ -1,8 +1,8 @@
 {
   "@context": "http://clowder.ncsa.illinois.edu/contexts/extractors.jsonld",
-  "name": "terra.dronepipeline.clipbyshape",
+  "name": "terra.dronepipeline.canopycover",
   "version": "1.0",
-  "description": "Clips georeferenced images by shapefile",
+  "description": "Generates canopy cover for plot images",
   "author": "Chris Schnaufer <schnaufer@email.arizona.edu>",
   "contributors": [],
   "contexts": [],
