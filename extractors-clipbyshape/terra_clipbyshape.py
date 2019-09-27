@@ -4,8 +4,9 @@
 '''
 
 import os
-import json
 import logging
+import sys
+import requests # for dsid_by_name()
 import osr
 
 from osgeo import ogr
@@ -14,6 +15,7 @@ from dbfread import DBF
 
 import pyclowder.datasets as clowder_dataset
 import pyclowder.files as clowder_file
+import pyclowder.utils
 from pyclowder.utils import CheckMessage
 
 from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clowder_info, \
@@ -21,8 +23,9 @@ from terrautils.extractors import TerrarefExtractor, build_metadata, confirm_clo
      timestamp_to_terraref
 from terrautils.sensors import STATIONS
 from terrautils.spatial import clip_raster
-from terrautils.imagefile import file_is_image_type, image_get_geobounds, polygon_to_tuples, \
+from terrautils.imagefile import file_is_image_type, image_get_geobounds, \
      polygon_to_tuples_transform, get_epsg
+from terrautils.metadata import prepare_pipeline_metadata
 
 # We need to add other sensor types for OpenDroneMap generated files before anything happens
 # The Sensor() class initialization defaults the sensor dictionary and we can't override
@@ -85,6 +88,36 @@ def get_plot_name(name_idx, data):
         plot_name = None
 
     return plot_name
+
+def dsid_by_name(host, key, name):
+    """Looks up the ID of a dataset by nanme
+
+    Args:
+        host(str): the URI of the host making the connection
+        key(str): used with the host API
+        name(str): the dataset name to look up
+
+    Return:
+        Returns the ID of the dataset if it's found. Returns None if the dataset
+        isn't found
+    """
+    url = "%sapi/datasets?key=%s&title=%s&exact=true" % (host, key, name)
+
+    try:
+        result = requests.get(url)
+        result.raise_for_status()
+
+        ds_md = result.json()
+        md_len = len(ds_md)
+    except Exception as ex:     # pylint: disable=broad-except
+        ds_md = None
+        md_len = 0
+        logging.debug(ex.message)
+
+    if ds_md and md_len > 0 and "id" in ds_md[0]:
+        return ds_md[0]["id"]
+
+    return None
 
 # The class for clipping images by shape
 class ClipByShape(TerrarefExtractor):
@@ -190,12 +223,36 @@ class ClipByShape(TerrarefExtractor):
                             else:
                                 poly.AssignSpatialReference(ref_sys)
 
-                            # pylint: disable=line-too-long
                             imagefiles[onefile] = {'bounds' : poly}
-                            # pylint: enable=line-too-long
 
         # Return what we've found
         return (shapefile, shxfile, dbffile, imagefiles)
+
+    # pylint: disable=too-many-arguments
+    def update_dataset_extractor_metadata(self, connector, host, key, dsid, metadata,\
+                                          extractor_name):
+        """Adds or replaces existing dataset metadata for the specified extractor
+
+        Args:
+            connector(obj): the message queue connector instance
+            host(str): the URI of the host making the connection
+            key(str): used with the host API
+            dsid(str): the dataset to update
+            metadata(str): the metadata string to update the dataset with
+            extractor_name(str): the name of the extractor to associate the metadata with
+        """
+        meta = build_metadata(host, self.extractor_info, dsid, metadata, "dataset")
+
+        try:
+            md_len = len(clowder_dataset.download_metadata(connector, host, key, dsid, extractor_name))
+        except Exception as ex:     # pylint: disable=broad-except
+            md_len = 0
+            logging.debug(ex.message)
+
+        if md_len > 0:
+            clowder_dataset.remove_metadata(connector, host, key, dsid, extractor_name)
+
+        clowder_dataset.upload_metadata(connector, host, key, dsid, meta)
 
     # Entry point for checking how message should be handled
     # pylint: disable=too-many-arguments
@@ -230,14 +287,7 @@ class ClipByShape(TerrarefExtractor):
         super(ClipByShape, self).process_message(connector, host, secret_key, resource,
                                                  parameters)
 
-        # Handle any parameters
-        if isinstance(parameters, basestring):
-            parameters = json.loads(parameters)
-        if isinstance(parameters, unicode):
-            parameters = json.loads(str(parameters))
-
         # Initialize local variables
-        dataset_name = parameters["datasetname"]
         season_name, experiment_name = "Unknown Season", "Unknown Experiment"
         datestamp, shape_table, plot_name_idx, shape_rows = None, None, None, None
 
@@ -262,7 +312,8 @@ class ClipByShape(TerrarefExtractor):
 
         # Get the best username, password, and space
         old_un, old_pw, old_space = (self.clowder_user, self.clowder_pass, self.clowderspace)
-        self.clowder_user, self.clowder_pass, self.clowderspace = self.get_clowder_context()
+        self.clowder_user, self.clowder_pass, self.clowderspace = \
+                                                    self.get_clowder_context(host, secret_key)
 
         # Ensure that the clowder information is valid
         if not confirm_clowder_info(host, secret_key, self.clowderspace, self.clowder_user,
@@ -293,17 +344,28 @@ class ClipByShape(TerrarefExtractor):
                             image_ids[image_name] = res_file['id']
 
             # Get timestamps. Also get season and experiment information for Clowder collections
-            datestamp = self.find_datestamp(dataset_name)
-            timestamp = timestamp_to_terraref(self.find_timestamp(dataset_name))
+            timestamp = timestamp_to_terraref(self.find_timestamp(resource['dataset_info']['name']))
+            if "__" in timestamp:
+                datestamp = timestamp.split("__")[0]
+            else:
+                datestamp = timestamp
             (season_name, experiment_name, _) = self.get_season_and_experiment(datestamp,
                                                                                self.sensor_name)
 
+            file_filters = None
             if self.experiment_metadata:
                 if 'extractors' in self.experiment_metadata:
                     extractor_json = self.experiment_metadata['extractors']
                     if 'shapefile' in extractor_json:
                         if 'plot_column_name' in extractor_json['shapefile']:
                             plot_name_idx = extractor_json['shapefile']['plot_column_name']
+                    if self.sensor_name in extractor_json:
+                        if 'filters' in extractor_json[self.sensor_name]:
+                            file_filters = extractor_json[self.sensor_name]['filters']
+                            if ',' in file_filters:
+                                file_filters = file_filters.split(',')
+                            elif file_filters:
+                                file_filters = [file_filters]
 
             # Check our current local variables
             if dbffile is None:
@@ -313,7 +375,13 @@ class ClipByShape(TerrarefExtractor):
 
             # Load the shapes and find the plot name column if we have a DBF file
             shape_in = ogr.Open(shapefile)
-            layer = shape_in.GetLayer(os.path.split(os.path.splitext(shapefile)[0])[1])
+            layer_name = os.path.split(os.path.splitext(shapefile)[0])[1]
+            if sys.version_info[0] < 3:
+                if isinstance(layer_name, unicode):
+                    layer_name = layer_name.encode('ascii', 'ignore')
+            elif isinstance(layer_name, (bytes, bytearray)):
+                layer_name = layer_name.decode('utf8')
+            layer = shape_in.GetLayer(layer_name)
             feature = layer.GetNextFeature()
             layer_ref = layer.GetSpatialRef()
 
@@ -353,8 +421,8 @@ class ClipByShape(TerrarefExtractor):
 
             # Loop through each polygon and extract plot level data
             alternate_plot_id = 0
+            logging.warning("About to loop through features")
             while feature:
-
                 # Current geometry to extract
                 plot_poly = feature.GetGeometryRef()
                 if layer_ref:
@@ -381,6 +449,7 @@ class ClipByShape(TerrarefExtractor):
 
                 # Create the dataset, even if we have no data to put in it, so that the caller knows
                 # it was addressed
+                ds_exists = dsid_by_name(host, secret_key, leaf_dataset)
                 target_dsid = build_dataset_hierarchy_crawl(host, secret_key,
                                                             self.clowder_user,
                                                             self.clowder_pass,
@@ -392,9 +461,24 @@ class ClipByShape(TerrarefExtractor):
                                                             datestamp[5:7],
                                                             datestamp[8:10],
                                                             leaf_ds_name=leaf_dataset)
+                if (self.overwrite_ok or not ds_exists) and self.experiment_metadata:
+                    self.update_dataset_extractor_metadata(connector, host, secret_key,
+                                                           target_dsid,
+                                                           prepare_pipeline_metadata(self.experiment_metadata),
+                                                           self.extractor_info['name'])
 
                 # Loop through all the images looking for overlap
                 for filename in imagefiles:
+
+                    # Check if we're filtering files
+                    if file_filters:
+                        filtered = False
+                        for one_filter in file_filters:
+                            if one_filter in os.path.basename(filename):
+                                filtered = True
+                                break
+                        if not filtered:
+                            continue
 
                     # Get the bounds. We also get the reference systems in case we need to convert
                     # between them
@@ -419,13 +503,16 @@ class ClipByShape(TerrarefExtractor):
                         self.log_info(resource, "Skipping image: "+filename)
                         continue
 
+                    self.log_info(resource, "Attempting to clip '" + filename +
+                                  "' to polygon number " + str(alternate_plot_id))
+
                     # Determine where we're putting the clipped file on disk and determine overwrite
                     # pylint: disable=unexpected-keyword-arg
                     out_file = self.sensors.create_sensor_path(timestamp,
                                                                filename=os.path.basename(filename),
                                                                plot=plot_name,
                                                                subsensor=self.sensor_name)
-                    if (file_exists(out_file) and not self.overwrite):
+                    if (file_exists(out_file) and not self.overwrite_ok):
                         # The file exists and don't want to overwrite it
                         self.logger.warn("Skipping existing output file: %s", out_file)
                         continue
@@ -447,8 +534,8 @@ class ClipByShape(TerrarefExtractor):
 
                     # Upload the clipped image to the dataset
                     found_in_dest = check_file_in_dataset(connector, host, secret_key, target_dsid,
-                                                          out_file, remove=self.overwrite)
-                    if not found_in_dest or self.overwrite:
+                                                          out_file, remove=self.overwrite_ok)
+                    if not found_in_dest or self.overwrite_ok:
                         image_name = os.path.basename(filename)
                         content = {
                             "comment": "Clipped from shapefile " + os.path.basename(shapefile),
@@ -464,6 +551,8 @@ class ClipByShape(TerrarefExtractor):
                         # Generate our metadata
                         meta = build_metadata(host, self.extractor_info, fileid, content, 'file')
                         clowder_file.upload_metadata(connector, host, secret_key, fileid, meta)
+                        connector.status_update(pyclowder.utils.StatusMessage.done, {"type": "file", "id": fileid}, "Done uploading file")
+                        connector.status_update(pyclowder.utils.StatusMessage.done, {"type": "dataset", "id": target_dsid}, "Done updating dataset")
                     else:
                         self.logger.warn("Skipping existing file in dataset: %s", out_file)
 
@@ -476,9 +565,12 @@ class ClipByShape(TerrarefExtractor):
             # Tell Clowder this is completed so subsequent file updates don't daisy-chain
             id_len = len(uploaded_file_ids)
             if id_len > 0 or self.created > 0:
-                extractor_md = build_metadata(host, self.extractor_info, resource['id'], {
+                ds_md = {
                     "files_created": uploaded_file_ids
-                }, 'dataset')
+                }
+                if self.experiment_metadata:
+                    ds_md.update(prepare_pipeline_metadata(self.experiment_metadata))
+                extractor_md = build_metadata(host, self.extractor_info, resource['id'], ds_md, 'dataset')
                 self.log_info(resource,
                               "Uploading shapefile plot extractor metadata to Level_2 dataset: "
                               + str(extractor_md))
