@@ -334,7 +334,7 @@ class CanopyCover(TerrarefExtractor):
                     # If the file has a geo shape we store it for clipping
                     bounds = image_get_geobounds(onefile)
                     epsg = get_epsg(onefile)
-                    if bounds[0] != np.nan:
+                    if not epsg is None and bounds[0] != np.nan:
                         ring = ogr.Geometry(ogr.wkbLinearRing)
                         ring.AddPoint(bounds[2], bounds[1])     # Upper left
                         ring.AddPoint(bounds[3], bounds[1])     # Upper right
