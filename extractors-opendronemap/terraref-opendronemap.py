@@ -36,6 +36,12 @@ if 'ua-mac' in STATIONS:
                                                  '{sensor}/{date}/{timestamp}/{filename}',
                                      'pattern': '{sensor}_L2_{station}_{date}{opts}.laz'
                                     }
+    if 'ply' not in STATIONS['ua-mac']:
+        STATIONS['ua-mac']['ply'] = {'display': 'Point cloud',
+                                     'template': '{base}/{station}/Level_2/' + \
+                                                 '{sensor}/{date}/{timestamp}/{filename}',
+                                     'pattern': '{sensor}_L2_{station}_{date}{opts}.ply'
+                                    }
     if 'shp' not in STATIONS['ua-mac']:
         STATIONS['ua-mac']['shp'] = {'display': 'Shapefile',
                                      'template': '{base}/{station}/Level_2/' + \
@@ -158,7 +164,7 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
         """
         # Filename/extension mappings for derived types that are not included in the
         # default RGB sensor mapping
-        return {'.laz':'laz', '.shp':'shp', '.dbf':'shp', '.shx':'shp',
+        return {'.laz':'laz', '.ply':'ply', '.shp':'shp', '.dbf':'shp', '.shx':'shp',
                 'proj.txt':'shp', '.prj':'shp', '.json':'shp', '.geojson':'shp'}
 
     @property
@@ -291,6 +297,9 @@ class ODMFullFieldStitcher(TerrarefExtractor, OpenDroneMapStitch):
 
         # Make a copy of the file
         src_path = os.path.join(file_path, source_file_name)
+        if not os.path.exists(src_path):
+            return
+
         cache_path = os.path.join(self.cache_folder, source_file_name)
         os.rename(src_path, cache_path)
 
