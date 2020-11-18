@@ -1,3 +1,9 @@
+# Archived repository 
+
+## More information on continued development can be found at https://osf.io/xdkcy/wiki/home/ 
+
+--- 
+
 # Drone Pipeline
 <img src="https://github.com/az-digitalag/Drone-Processing-Pipeline/raw/07b1edc34a1faea501c80f583beb07f9d6b290bb/resources/drone-pipeline.png" width="100" />
 
